@@ -1,6 +1,22 @@
 import { randomUUID } from "node:crypto";
+import { isJobPortable } from "./account-failover-policy.js";
+import { getConfig } from "./config.js";
+import { AppError, type ErrorCode } from "./errors.js";
 
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
+
+export interface FailoverOrigin {
+  accountId: string;
+  accountLabel: string;
+}
+
+export interface FailoverAttempt {
+  accountId: string;
+  accountLabel: string;
+  status: "skipped" | "failed" | "succeeded";
+  code?: ErrorCode;
+  reason: string;
+}
 
 export interface SceneParams {
   prompt: string;
@@ -19,14 +35,9 @@ export interface SceneParams {
   reference_from?: string;
   edit_asset?: string;
   agent_scenes?: string[];
-  // The scene number each agent scene is saved as. A retry of scenes 7 and 12 keeps scene-07 and scene-12; without it
-  // the numbers run on from file_stem.
   agent_numbers?: number[];
-  // Reference images for an agent batch: attached once as ingredients in the agent composer (absolute paths, uploaded
-  // once, or "asset:<title>"), with a short name each, plus which of them every scene uses (names, per scene).
   agent_refs?: { image: string; name: string }[];
   agent_scene_refs?: string[][];
-  // Flow asset names of agent_refs after upload, so a retry round re-attaches without uploading again.
   agent_ref_assets?: string[];
   continue_from?: string;
   attach?: string[];
@@ -40,6 +51,12 @@ export interface SceneParams {
 export interface Job {
   id: string;
   status: JobStatus;
+  accountId?: string;
+  accountLabel?: string;
+  portable: boolean;
+  failoverFrom?: FailoverOrigin;
+  failoverAttempts?: FailoverAttempt[];
+  errorCode?: ErrorCode;
   params: SceneParams;
   files: string[];
   attempts: number;
@@ -47,7 +64,6 @@ export interface Job {
   progress?: string;
   note?: string;
   error?: string;
-  // Scene numbers a batch still could not make after all its own retries; flow_retry redoes just these.
   failed_scenes?: number[];
   createdAt: string;
   finishedAt?: string;
@@ -55,23 +71,38 @@ export interface Job {
 
 export type JobRunner = (job: Job) => Promise<string[]>;
 
-// Flow is driven like a careful person would: one generation at a time, with a
-// randomised pause between them.
-const PAUSE_MIN_MS = Number(process.env.FLOW_MCP_PAUSE_MIN_S ?? 25) * 1000;
-const PAUSE_MAX_MS = Number(process.env.FLOW_MCP_PAUSE_MAX_S ?? 70) * 1000;
+export interface JobOwnership {
+  accountId?: string;
+  accountLabel?: string;
+  portable?: boolean;
+}
 
 export class JobQueue {
+  private runner: JobRunner;
   private jobs = new Map<string, Job>();
   private working = false;
   private lastFinished = 0;
+  private getDelayRange: () => { minMs: number; maxMs: number };
   pausedReason: string | null = null;
 
-  constructor(private runner: JobRunner) {}
+  constructor(
+    runner: JobRunner,
+    getDelayRange: () => { minMs: number; maxMs: number } = () => {
+      const cfg = getConfig();
+      return { minMs: cfg.pauseMinMs, maxMs: cfg.pauseMaxMs };
+    },
+  ) {
+    this.runner = runner;
+    this.getDelayRange = getDelayRange;
+  }
 
-  add(params: SceneParams): Job {
+  add(params: SceneParams, owner?: JobOwnership): Job {
     const job: Job = {
       id: randomUUID().slice(0, 8),
       status: "queued",
+      accountId: owner?.accountId,
+      accountLabel: owner?.accountLabel,
+      portable: owner?.portable ?? isJobPortable(params),
       params,
       files: [],
       attempts: 0,
@@ -82,8 +113,12 @@ export class JobQueue {
     return job;
   }
 
+  get active(): boolean {
+    return this.working || this.list().some((j) => j.status === "running" || j.status === "queued");
+  }
+
   get busy(): boolean {
-    return this.list().some((j) => j.status === "running");
+    return this.active;
   }
 
   get(id: string): Job | undefined {
@@ -94,13 +129,20 @@ export class JobQueue {
     return [...this.jobs.values()];
   }
 
-  // Puts a failed or cancelled job back in line with the same settings and file name.
-  retry(id: string): Job | undefined {
+  retry(id: string, owner?: { accountId?: string; accountLabel?: string }): Job | undefined {
     const job = this.jobs.get(id);
     if (job && (job.status === "failed" || job.status === "cancelled")) {
       job.status = "queued";
       job.error = undefined;
+      job.errorCode = undefined;
       job.finishedAt = undefined;
+      job.failoverFrom = undefined;
+      job.failoverAttempts = undefined;
+      if (job.params.agent_ref_assets) job.params.agent_ref_assets = undefined;
+      if (owner?.accountId) {
+        job.accountId = owner.accountId;
+        job.accountLabel = owner.accountLabel;
+      }
       void this.work();
     }
     return job;
@@ -123,7 +165,8 @@ export class JobQueue {
         const job = this.list().find((j) => j.status === "queued");
         if (!job) return;
         if (this.lastFinished) {
-          const pause = PAUSE_MIN_MS + Math.random() * (PAUSE_MAX_MS - PAUSE_MIN_MS);
+          const { minMs, maxMs } = this.getDelayRange();
+          const pause = minMs + Math.random() * (maxMs - minMs);
           const remaining = this.lastFinished + pause - Date.now();
           if (remaining > 0) {
             this.pausedReason = `pacing: next generation in ${Math.ceil(remaining / 1000)}s`;
@@ -138,10 +181,10 @@ export class JobQueue {
           job.files = await this.runner(job);
           job.status = "done";
           job.error = undefined;
+          job.errorCode = undefined;
         } catch (err) {
           job.error = err instanceof Error ? err.message : String(err);
-          // Failed tiles are already retried inside Flow (its own Retry button); only an agent that produced nothing
-          // is re-queued here. Timeouts are never retried automatically: they may still have spent credits.
+          job.errorCode = err instanceof AppError ? err.code : undefined;
           const retryable = /agent finished without creating/i.test(job.error);
           job.status = retryable && job.attempts <= (job.params.retries ?? 1) ? "queued" : "failed";
         }

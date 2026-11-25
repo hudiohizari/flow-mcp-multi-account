@@ -6,13 +6,13 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { HOME_DIR } from "./chrome.js";
+import { getConfig } from "./config.js";
 
 const run = promisify(execFile);
 const FFMPEG = process.env.FLOW_MCP_FFMPEG ?? "ffmpeg";
 const FFPROBE = process.env.FLOW_MCP_FFPROBE ?? "ffprobe";
 const MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX";
-const CACHE = join(HOME_DIR, "models", "kokoro");
+const cacheDir = () => join(getConfig().modelsDir, "kokoro");
 const WORKER = join(dirname(fileURLToPath(import.meta.url)), "kokoro-worker.js");
 
 export const KOKORO_MB = 326;
@@ -35,7 +35,7 @@ export const KOKORO_VOICES = GRADED.map(([name, label, grade]) => ({
   description: `${name[0] === "b" ? "British" : "American"}, ${name[1] === "m" ? "male" : "female"} · grade ${grade}`,
 }));
 
-export const kokoroReady = () => existsSync(join(CACHE, MODEL, "onnx", "model.onnx"));
+export const kokoroReady = () => existsSync(join(cacheDir(), MODEL, "onnx", "model.onnx"));
 
 // One take at a time: two first-time takes at once would download the model twice into the same folder.
 let queue: Promise<unknown> = Promise.resolve();
@@ -48,8 +48,9 @@ export function speakWithKokoro(text: string, voice: string, target: string, spe
     const jobFile = stem + ".kokoro.json";
     const raw = stem + ".kokoro.wav";
     const firstTime = !kokoroReady();
-    mkdirSync(CACHE, { recursive: true });
-    writeFileSync(jobFile, JSON.stringify({ text, voice, speed, out: raw, cache: CACHE, model: MODEL }), "utf8");
+    const cache = cacheDir();
+    mkdirSync(cache, { recursive: true });
+    writeFileSync(jobFile, JSON.stringify({ text, voice, speed, out: raw, cache, model: MODEL }), "utf8");
     try {
       await run(process.execPath, [WORKER, jobFile], { timeout: firstTime ? 20 * 60_000 : 5 * 60_000, maxBuffer: 16 * 1024 * 1024 }).catch(
         (err: Error & { stderr?: string }) => {

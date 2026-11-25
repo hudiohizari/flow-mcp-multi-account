@@ -184,7 +184,6 @@ export async function presenter(o: PresenterOptions): Promise<{ output: string; 
     const filters: string[] = [];
     const parts: string[] = [];
     o.segments.forEach((s, i) => {
-      const dur = (s.to - s.from).toFixed(3);
       const take = `[0:v]trim=start=${s.from}:end=${s.to},setpts=PTS-STARTPTS,fps=${fps},format=yuv420p`;
       if (s.layout === "full") {
         const z0 = s.zoom?.from ?? 1;

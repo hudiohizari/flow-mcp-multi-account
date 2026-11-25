@@ -1,13 +1,13 @@
 import { execFile } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { promisify } from "node:util";
-import { HOME_DIR } from "./chrome.js";
+import { getConfig } from "./config.js";
 
 const run = promisify(execFile);
 const FFMPEG = process.env.FLOW_MCP_FFMPEG ?? "ffmpeg";
-const KEY_FILE = join(HOME_DIR, "gemini-key");
-const MODEL = process.env.FLOW_MCP_GEMINI_TTS ?? "gemini-2.5-flash-preview-tts";
+const keyFile = () => getConfig().geminiKeyFile;
+const ttsModel = () => getConfig().geminiTtsModel;
 
 // Gemini's prebuilt voices. Flow draws on the same set, so a narration made here matches one made in Flow.
 export const GEMINI_VOICES = [
@@ -31,7 +31,8 @@ export const GEMINI_VOICES = [
 // A key is one unbroken run of characters - older AI Studio keys start "AIza", newer ones "AQ" (2026-10). Anything
 // shorter or still holding template text is not a key.
 export const geminiKey = (): string | undefined => {
-  const key = (process.env.GEMINI_API_KEY ?? (existsSync(KEY_FILE) ? readFileSync(KEY_FILE, "utf8") : "")).trim();
+  const kf = keyFile();
+  const key = (process.env.GEMINI_API_KEY ?? (existsSync(kf) ? readFileSync(kf, "utf8") : "")).trim();
   if (!key || key.length < 20 || /^(YOUR|PASTE|<|\$)/i.test(key) || /_KEY|KEY_HERE|EXAMPLE/i.test(key)) return undefined;
   return key;
 };
@@ -50,9 +51,10 @@ export async function saveGeminiKey(raw: string): Promise<{ saved: true; ending:
   const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1", { headers: { "x-goog-api-key": key } }).catch(() => null);
   if (!res) throw new Error("Couldn't reach Google to check the key. Check your internet connection and try again.");
   if (!res.ok) throw new Error("Google didn't accept that key. Copy it again from aistudio.google.com/apikey. Your previous key, if any, is unchanged.");
-  mkdirSync(dirname(KEY_FILE), { recursive: true });
-  writeFileSync(KEY_FILE, key, { mode: 0o600 });
-  chmodSync(KEY_FILE, 0o600);
+  const kf = keyFile();
+  mkdirSync(dirname(kf), { recursive: true });
+  writeFileSync(kf, key, { mode: 0o600 });
+  chmodSync(kf, 0o600);
   return { saved: true, ending: key.slice(-4) };
 }
 
@@ -64,7 +66,8 @@ interface TtsPart {
 export async function speakWithGemini(text: string, voice: string, target: string, style?: string): Promise<{ output: string; duration: number }> {
   const key = geminiKey();
   if (!key) {
-    const placeholder = existsSync(KEY_FILE) && readFileSync(KEY_FILE, "utf8").trim().length > 0;
+    const kf = keyFile();
+    const placeholder = existsSync(kf) && readFileSync(kf, "utf8").trim().length > 0;
     throw new Error(
       (placeholder
         ? `The key file still holds placeholder text, not a key.\n\n`
@@ -76,7 +79,7 @@ export async function speakWithGemini(text: string, voice: string, target: strin
     );
   }
   const prompt = style ? `Say ${style}: ${text}` : text;
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${ttsModel()}:generateContent`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
