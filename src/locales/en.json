@@ -1,0 +1,290 @@
+{
+  "error": {
+    "REGISTRY_CORRUPT": "Your saved account list could not be read because the file is damaged. It was left untouched so nothing was lost. Restore a backup copy or move the damaged file aside, then try again.",
+    "LABEL_EMPTY": "Enter an account name. Blank spaces alone cannot be used.",
+    "LABEL_TOO_LONG": "Use {{max}} characters or fewer for the account name.",
+    "LABEL_CONTROL_CHARS": "Account names cannot contain hidden control characters. Use ordinary letters, numbers, or punctuation.",
+    "DUPLICATE_LABEL": "An account named \"{{label}}\" already exists. Pick a different name.",
+    "ACCOUNT_NOT_FOUND": "Could not find an account matching \"{{target}}\". Refresh your accounts and try again.",
+    "ACCOUNT_SELECTOR_REQUIRED": "Choose or name an account first, then try again.",
+    "ACCOUNT_DISABLED": "Account \"{{label}}\" is disabled. Enable it first before switching or signing in.",
+    "CANNOT_DISABLE_ACTIVE": "Cannot disable \"{{label}}\" while it is active. Switch to another account first.",
+    "CANNOT_DISABLE_LAST": "Cannot disable \"{{label}}\" because at least one account must stay enabled.",
+    "CANNOT_REMOVE_ACTIVE": "Cannot remove \"{{label}}\" while it is active. Switch to another account first.",
+    "CANNOT_REMOVE_DEFAULT": "Cannot remove \"{{label}}\" because your primary account must stay in the list.",
+    "INVALID_REORDER": "Could not update the account order because the list changed. Refresh your accounts and try again.",
+    "SWITCH_IN_PROGRESS": "Another account switch is already running. Wait a moment for it to finish, then try again.",
+    "CHROME_BUSY": "Flow Chrome is busy right now. Wait for the current job or action to finish, then try again.",
+    "AUTH_REQUIRED": "Not signed in to Flow yet. Open Accounts and select Sign in (or run npm run login), then sign in to Google in the Chrome window.",
+    "NOT_IN_PROJECT": "No Flow project is open right now. Open a project in the Flow Chrome window or start a new project.",
+    "ACCOUNT_MISMATCH": "This action belongs to \"{{expectedLabel}}\", while \"{{activeLabel}}\" is active. Switch to \"{{expectedLabel}}\" first, then try again.",
+    "NOTHING_TO_RETRY": "Nothing to retry on the active account. Only failed jobs or incomplete image batches can be retried.",
+    "CDP_PORT_OCCUPIED": "Another program on this computer is blocking Flow Studio's browser connection. Close conflicting apps and try again.",
+    "CDP_WRONG_PROFILE": "The connected Chrome window belongs to a different browser profile. Close all Flow Chrome windows and try again.",
+    "CDP_UNAVAILABLE": "Flow Studio could not reach the Flow Chrome window. Close Chrome and reopen it from Accounts.",
+    "PROFILE_MISSING": "The browser folder for \"{{label}}\" is missing on this computer. Select Sign in in Accounts to set it up again.",
+    "PROFILE_LOCKED": "This account's Chrome profile is already open in another Chrome window. Close that Chrome window first, then try again.",
+    "CHROME_NOT_FOUND": "Google Chrome could not be found on this computer. Install Google Chrome or set your Chrome path, then try again.",
+    "CHROME_START_FAILED": "Chrome opened, but Flow Studio could not connect to it in time. Close the Chrome window and try again.",
+    "CHROME_NO_CONTEXT": "The Flow Chrome window has no open browser window. Close Chrome and reopen it from Accounts.",
+    "UNSAFE_ACCOUNT_PATH": "Could not move that account folder safely because its location points outside Flow Studio's accounts folder.",
+    "PATH_OUTSIDE_ALLOWLIST": "That file location sits outside the folders Flow Studio is allowed to access.",
+    "REMOTE_UNREACHABLE": "Could not reach the running Flow Studio server. Make sure Flow Studio is still open and try again.",
+    "BODY_TOO_LARGE": "That upload or request is too large to send. Try a smaller file.",
+    "VALIDATION_ERROR": "Please check your input and try again: {{details}}",
+    "INVALID_STATE": "That action cannot run right now. Refresh and try again.",
+    "UNAUTHORIZED": "This Flow Studio link needs a fresh access key. Reopen Flow Studio from the launcher.",
+    "FORBIDDEN_HOST": "Access blocked. Open Flow Studio directly from this computer.",
+    "NOT_FOUND": "That file or page could not be found.",
+    "JOB_NOT_FOUND": "Could not find job {{jobId}}. Check Monitor for the current job list.",
+    "MEDIA_NOT_FOUND": "That media file could not be found. It may have been moved or deleted.",
+    "INTERNAL_ERROR": "Something went wrong while completing that request. Try again, or restart Flow Studio if it keeps happening.",
+    "MAX_CREDITS_EXCEEDED": "Flow quoted {{cost}} credits for this scene, which is above your {{maxCredits}}-credit limit. Nothing ran and no credits were spent. Raise your credit limit or pick a lower-cost model, length, or quality.",
+    "INSUFFICIENT_CREDITS": "Account \"{{label}}\" does not have enough credits for this job, and no enabled backup account is available. Add credits to \"{{label}}\" or add and enable a backup in Accounts.",
+    "AUTO_FAILOVER_DISABLED": "Account \"{{label}}\" does not have enough credits for this job, and automatic credit failover is turned off. Turn on Automatic credit failover in Accounts, switch accounts, or add credits to \"{{label}}\".",
+    "ACCOUNT_BOUND_FAILOVER_BLOCKED": "Account \"{{label}}\" ran out of credits, and this job cannot fail over because its Flow-hosted assets or clip edits belong to \"{{label}}\"'s project. Add credits to \"{{label}}\", or use local files from your saved films folder so jobs can run on backup accounts.",
+    "FAILOVER_EXHAUSTED": "Account \"{{label}}\" ran out of credits and no backup account could finish this job ({{summary}}). Switched back to \"{{label}}\". Add credits or sign in to a backup account in Accounts, then retry."
+  },
+  "hint": {
+    "signIn": "Not signed in yet. Open Accounts and select Sign in (or run npm run login), then sign in to Google in the Chrome window.",
+    "authInProgress": "Google sign-in is open in the Flow Chrome window. Finish signing in there and Flow Studio will connect automatically.",
+    "noProject": "Signed in, but no Flow project is open yet. Select New project or open a project in the Flow Chrome window.",
+    "needsRelogin": "The browser folder for \"{{label}}\" went missing, so cached balance details were cleared. Select Sign in in Accounts to restore access.",
+    "staleCleared": "Switched to \"{{label}}\". Cleared media lists, character picks, and scene references from the previous account.",
+    "switchInProgress": "Switching Flow accounts now. Wait a moment for Chrome to reopen before starting work.",
+    "registryCorrupt": "Your saved account list could not be read and was left untouched. Restore a backup copy or move the damaged file aside, then reload Studio."
+  },
+  "account": {
+    "header": {
+      "pillLabel": "Account: {{label}}",
+      "pillLoading": "Accounts",
+      "pillSwitching": "Switching accounts...",
+      "pillIssue": "Accounts: Action needed",
+      "pillAria": "Open accounts manager, active account {{label}}",
+      "noAccount": "No active account",
+      "creditsValue": "{{count}} credits",
+      "statusOffline": "Server offline",
+      "statusConnecting": "Connecting...",
+      "statusNotConnected": "Not connected",
+      "statusSignedOut": "Not signed in",
+      "statusNoProject": "No project open",
+      "statusWorking": "Working",
+      "statusReady": "Ready"
+    },
+    "dialog": {
+      "title": "Accounts",
+      "subtitle": "Keep each Google Flow login, character list, and credit balance separate while sharing your saved films.",
+      "close": "Close"
+    },
+    "states": {
+      "loading": {
+        "heading": "Loading accounts...",
+        "description": "Checking your saved accounts and current Flow status."
+      },
+      "empty": {
+        "heading": "Only one account so far",
+        "description": "Add another Google account to track its credits separately and switch cleanly whenever you need more."
+      },
+      "populated": {
+        "heading": "Your Flow accounts",
+        "description": "Priority runs from top to bottom. Only one account uses Flow Chrome at a time."
+      },
+      "error": {
+        "heading": "Could not load accounts",
+        "description": "Your saved account list ran into a problem, so account changes are paused to protect your data. Review the message below and try again."
+      },
+      "switching": {
+        "heading": "Switching accounts...",
+        "description": "Closing the current Chrome session and opening the selected account. Wait until this finishes."
+      }
+    },
+    "badges": {
+      "active": "Active",
+      "primary": "Primary",
+      "disabled": "Disabled",
+      "needsSignIn": "Needs sign-in",
+      "switching": "Switching",
+      "lowCredits": "Low (<24h)",
+      "zeroCredits": "0 credits (<24h)"
+    },
+    "meta": {
+      "plan": "Plan",
+      "credits": "Credits",
+      "unrecorded": "Unrecorded",
+      "updated": "Updated",
+      "updatedAt": "Updated {{time}}",
+      "noProjectOpen": "No project open",
+      "project": "Project",
+      "priority": "Priority {{rank}}",
+      "enabledToggle": "Enabled",
+      "failover": "Failover",
+      "skipZeroWithinTtl": "Skipped for paid shots (<24h)",
+      "skipCostWithinTtl": "Skipped at {{minCost}}+ credits (<24h)",
+      "recheckAfterTtl": "Older than 24h; re-checked live"
+    },
+    "credits": {
+      "skipZeroDetail": "Skipped on failover for paid shots for up to 24 hours. Refresh this account to update sooner.",
+      "skipCostDetail": "Skipped on failover for shots costing {{minCost}}+ credits (<24h). Lower-cost shots still qualify.",
+      "staleRecheckNote": "Last credit check is over 24 hours old (>24h), so failover will re-check this account live.",
+      "freeFramesUnaffected": "Free Frames (0 credits) are unaffected and keep running normally.",
+      "ttlHint": "Low or zero credit flags clear automatically on refresh or after 24 hours."
+    },
+    "failover": {
+      "toggleLabel": "Automatic credit failover",
+      "helper": "When the active account runs out of credits, automatically switch down your priority list for portable images and videos. Jobs using Flow-hosted assets or clip edits stay on their owning account.",
+      "emptyHeading": "Only one enabled account",
+      "emptyHint": "Add another Google account or enable a backup below so automatic credit failover can switch when credits run out.",
+      "lockedBusy": "Wait for the current Flow job or action to finish before changing automatic credit failover.",
+      "lockedSwitching": "Wait for the active account switch to finish before changing automatic credit failover.",
+      "pillEvaluating": "Checking backups...",
+      "pillSwitching": "Switching to {{toLabel}}...",
+      "pillVerifying": "Verifying {{toLabel}}...",
+      "pillReverting": "Reverting to {{fromLabel}}...",
+      "pillAria": "Open accounts manager, {{status}}",
+      "toastEnabled": "Turned on automatic credit failover.",
+      "toastDisabled": "Turned off automatic credit failover.",
+      "switchedPreserved": "Switched to \"{{label}}\". Reloaded account lists; your unsent scene drafts stay preserved.",
+      "phases": {
+        "evaluating": {
+          "heading": "Checking backup accounts...",
+          "description": "Account \"{{fromLabel}}\" ran out of credits. Looking down your priority list for an eligible backup."
+        },
+        "switching": {
+          "heading": "Switching to \"{{toLabel}}\"...",
+          "description": "Saving \"{{fromLabel}}\"'s Flow project and opening \"{{toLabel}}\" in Chrome to continue this job."
+        },
+        "verifying": {
+          "heading": "Verifying \"{{toLabel}}\"...",
+          "description": "Checking sign-in status, Flow project, and available credits on \"{{toLabel}}\"."
+        },
+        "reverting": {
+          "heading": "Switching back to \"{{fromLabel}}\"...",
+          "description": "No backup account could finish this job. Returning Flow Chrome to \"{{fromLabel}}\"."
+        }
+      },
+      "skipReasons": {
+        "already_attempted": "already tried",
+        "disabled": "disabled",
+        "needs_relogin": "needs sign-in",
+        "insufficient_cached_credits": "low credits (<24h)",
+        "recently_exhausted": "recently ran out (<24h)"
+      }
+    },
+    "actions": {
+      "addAccount": "Add account",
+      "switch": "Switch",
+      "signIn": "Sign in",
+      "refresh": "Refresh",
+      "newProject": "New project",
+      "rename": "Rename",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "remove": "Remove",
+      "save": "Save",
+      "cancel": "Cancel",
+      "retry": "Retry",
+      "switching": "Switching...",
+      "refreshing": "Refreshing...",
+      "creatingProject": "Creating...",
+      "adding": "Adding...",
+      "saving": "Saving...",
+      "removing": "Removing...",
+      "moveUpAria": "Move {{label}} up",
+      "moveDownAria": "Move {{label}} down"
+    },
+    "disabled": {
+      "activeSwitch": "This account is already active.",
+      "activeDisable": "Switch to another account before disabling this one.",
+      "activeRemove": "Switch to another account before removing this one.",
+      "defaultRemove": "Your primary account cannot be removed.",
+      "soleEnabled": "At least one account must stay enabled.",
+      "disabledSwitch": "Enable this account before switching to it.",
+      "inactiveNewProject": "Switch to this account first to start a new Flow project.",
+      "inactiveRefresh": "Switch to this account first to check its live balance.",
+      "busySwitch": "Wait for the current Flow job or action to finish before switching.",
+      "firstPriority": "Already at the top of your list.",
+      "lastPriority": "Already at the bottom of your list."
+    },
+    "form": {
+      "addHeading": "Add a new account",
+      "addLabel": "Account name",
+      "addPlaceholder": "Backup 1",
+      "addHelper": "Use 1 to 60 characters so each account is easy to recognize.",
+      "renameLabel": "New account name",
+      "renamePlaceholder": "Enter account name",
+      "errorEmpty": "Enter an account name. Blank spaces alone cannot be used.",
+      "errorTooLong": "Use {{max}} characters or fewer for the account name.",
+      "errorDuplicate": "An account named \"{{label}}\" already exists. Pick a different name."
+    },
+    "trash": {
+      "title": "Remove \"{{label}}\"?",
+      "body": "This removes \"{{label}}\" from your account list and moves its browser profile and account characters to {{binName}}.",
+      "reassurance": "Your downloaded films, saved keys, and uploads stay safe. Re-adding \"{{label}}\" later creates a fresh folder.",
+      "confirm": "Move to {{binName}}",
+      "cancel": "Cancel"
+    },
+    "newProject": {
+      "title": "Start a new Flow project",
+      "description": "Opens an empty project in Flow for the active account. Characters belong to each project, so create them again if needed.",
+      "fieldLabel": "Project name (optional)",
+      "placeholder": "Leave blank for Flow's default name",
+      "confirm": "Create project",
+      "cancel": "Cancel",
+      "success": "Started new Flow project \"{{title}}\".",
+      "successUntitled": "Started a new empty Flow project."
+    },
+    "monitor": {
+      "empty": "Nothing queued yet.",
+      "creditsBadge": "{{count}} cr",
+      "attemptsBadge": "try {{count}}",
+      "retryFailedOne": "Retry {{count}} failed image",
+      "retryFailedMany": "Retry {{count}} failed images",
+      "jobAccount": "{{label}}",
+      "jobAccountAria": "Created on account {{label}}",
+      "jobAccountFailover": "{{accountLabel}} (failover from {{fromLabel}})",
+      "jobAccountFailoverAria": "Started on {{fromLabel}}, failed over to {{accountLabel}}",
+      "failoverTrailSummary": "Failover path: {{trail}}",
+      "failoverHop": "{{label}} ({{status}})",
+      "failoverHopWithReason": "{{label}} ({{status}}: {{reason}})",
+      "hopStatusSkipped": "skipped",
+      "hopStatusFailed": "failed",
+      "hopStatusSucceeded": "succeeded",
+      "retryBlockedTitle": "Switch to \"{{jobAccount}}\" to retry",
+      "retryBlockedMessage": "This job started on \"{{jobAccount}}\", while \"{{activeAccount}}\" is currently active. Switch back to \"{{jobAccount}}\" first, then retry.",
+      "retryBlockedHint": "Switch to \"{{jobAccount}}\" in Accounts to retry this job.",
+      "retryBoundReason": "Uses Flow-hosted assets or clip edits from \"{{jobAccount}}\", so it can only retry on \"{{jobAccount}}\".",
+      "retryPortableHint": "Portable job: retrying runs on \"{{activeAccount}}\"."
+    },
+    "drafts": {
+      "slotBadge": "From {{label}}",
+      "previousAccountFallback": "previous account",
+      "clearSlotAria": "Remove {{name}} from {{label}}",
+      "clearSlotGenericAria": "Clear mismatched asset",
+      "framesHeading": "Assets from another account",
+      "framesDescription": "Some frame references come from {{sourceLabels}}, not active account \"{{activeLabel}}\". Clear them or switch accounts before rendering.",
+      "framesAgentIgnored": "Some frame references come from {{sourceLabels}}, not active account \"{{activeLabel}}\". They are ignored while Flow agent is selected.",
+      "shotsHeading": "Assets from another account",
+      "shotsDescription": "Some shot frames or references come from {{sourceLabels}}, not active account \"{{activeLabel}}\". Clear them or switch accounts before rolling.",
+      "castHeading": "Picture from another account",
+      "castDescription": "This character picture comes from {{sourceLabels}}, not active account \"{{activeLabel}}\". Clear it or switch accounts before creating.",
+      "clearMismatched": "Clear mismatched assets",
+      "switchToAccount": "Switch to \"{{label}}\"",
+      "openAccounts": "Open Accounts",
+      "rollBlockedReason": "Clear mismatched assets or switch to {{sourceLabels}} to run",
+      "castBlockedReason": "Clear the mismatched picture or switch to {{sourceLabels}} before creating."
+    },
+    "toast": {
+      "added": "Added \"{{label}}\". Select Sign in when ready.",
+      "switched": "Switched to \"{{label}}\".",
+      "alreadyActive": "\"{{label}}\" is already active.",
+      "signInOpened": "Opened Chrome for \"{{label}}\". Finish signing in there.",
+      "renamed": "Renamed account to \"{{label}}\".",
+      "enabled": "Enabled \"{{label}}\".",
+      "disabled": "Disabled \"{{label}}\".",
+      "reordered": "Updated account priority.",
+      "removed": "Moved \"{{label}}\" to {{binName}}.",
+      "refreshed": "Updated balance for \"{{label}}\".",
+      "loginReverted": "Chrome closed before sign-in finished. Switched back to \"{{previousLabel}}\"."
+    }
+  }
+}

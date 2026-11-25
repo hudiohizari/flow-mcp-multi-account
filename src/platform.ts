@@ -1,69 +1,109 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, renameSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
 
-// Everything that differs between macOS, Windows and Linux lives here, so the rest of the code stays the same on all
-// three. macOS is the tested platform; the Windows and Linux branches are written to each system's own documented
-// tools but have not been run on a real machine yet.
 export const IS_MAC = process.platform === "darwin";
 export const IS_WIN = process.platform === "win32";
 
-// How the panel names this computer and its bin, so nothing says "Mac" on a PC.
-export const COMPUTER = IS_MAC ? "this Mac" : IS_WIN ? "this PC" : "this computer";
-export const BIN = IS_MAC ? "the Mac's Trash" : IS_WIN ? "the Recycle Bin" : "the Trash";
+export const computerName = (p: NodeJS.Platform = process.platform) =>
+  p === "darwin" ? "this Mac" : p === "win32" ? "this PC" : "this computer";
+export const binName = (p: NodeJS.Platform = process.platform) =>
+  p === "darwin" ? "the Mac's Trash" : p === "win32" ? "the Recycle Bin" : "the Trash";
+export const ffmpegHint = (p: NodeJS.Platform = process.platform) =>
+  p === "darwin" ? "brew install ffmpeg" : p === "win32" ? "winget install Gyan.FFmpeg" : "sudo apt install ffmpeg";
 
-export const FFMPEG_HINT = IS_MAC ? "brew install ffmpeg" : IS_WIN ? "winget install Gyan.FFmpeg" : "sudo apt install ffmpeg";
+export const COMPUTER = computerName();
+export const BIN = binName();
+export const FFMPEG_HINT = ffmpegHint();
 
-// PowerShell single-quoted string: the only character that needs escaping is the quote itself.
+export interface PlatformFs {
+  platform: NodeJS.Platform;
+  home: string;
+  now: () => number;
+  existsSync: typeof existsSync;
+  mkdirSync: typeof mkdirSync;
+  renameSync: typeof renameSync;
+  cpSync: typeof cpSync;
+  rmSync: typeof rmSync;
+  statSync: typeof statSync;
+  execFileSync: typeof execFileSync;
+}
+
+export function defaultPlatformFs(): PlatformFs {
+  return {
+    platform: process.platform,
+    home: homedir(),
+    now: () => Date.now(),
+    existsSync,
+    mkdirSync,
+    renameSync,
+    cpSync,
+    rmSync,
+    statSync,
+    execFileSync,
+  };
+}
+
 export const psQuote = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
-export function powershell(script: string, timeout = 120_000): string {
-  return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], {
+export function powershell(script: string, timeout = 120_000, exec: typeof execFileSync = execFileSync): string {
+  return exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], {
     encoding: "utf8",
     timeout,
     windowsHide: true,
   });
 }
 
-// Puts a file or folder in the system's own bin so it can be restored: the Mac's Trash, Windows' Recycle Bin, or the
-// freedesktop Trash on Linux. Never deletes anything outright.
-export function moveToBin(target: string): string {
-  if (IS_MAC) {
-    const bin = join(homedir(), ".Trash");
+function moveWithExdevFallback(src: string, dest: string, io: PlatformFs): void {
+  try {
+    io.renameSync(src, dest);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EXDEV") throw err;
+    io.cpSync(src, dest, { recursive: true, force: false, errorOnExist: true });
+    io.rmSync(src, { recursive: true, force: true });
+  }
+}
+
+export function moveToBin(target: string, io: PlatformFs = defaultPlatformFs()): string {
+  if (io.platform === "darwin") {
+    const bin = join(io.home, ".Trash");
+    io.mkdirSync(bin, { recursive: true });
     const name = basename(target);
     const ext = extname(name);
-    const dest = existsSync(join(bin, name)) ? join(bin, `${name.slice(0, name.length - ext.length)}-${Date.now()}${ext}`) : join(bin, name);
-    renameSync(target, dest);
+    const dest = io.existsSync(join(bin, name))
+      ? join(bin, `${name.slice(0, name.length - ext.length)}-${io.now()}${ext}`)
+      : join(bin, name);
+    moveWithExdevFallback(target, dest, io);
     return dest;
   }
-  if (IS_WIN) {
-    const kind = statSync(target).isDirectory() ? "DeleteDirectory" : "DeleteFile";
+  if (io.platform === "win32") {
+    const kind = io.statSync(target).isDirectory() ? "DeleteDirectory" : "DeleteFile";
     powershell(
       `Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::${kind}(${psQuote(target)}, 'OnlyErrorDialogs', 'SendToRecycleBin')`,
+      120_000,
+      io.execFileSync,
     );
-    return BIN;
+    return "the Recycle Bin";
   }
   try {
-    execFileSync("gio", ["trash", target], { stdio: "ignore" });
-    return BIN;
+    io.execFileSync("gio", ["trash", target], { stdio: "ignore" });
+    return "the Trash";
   } catch {
-    const bin = join(homedir(), ".local", "share", "Trash", "files");
-    mkdirSync(bin, { recursive: true });
-    const dest = join(bin, `${basename(target)}-${Date.now()}`);
-    renameSync(target, dest);
+    const bin = join(io.home, ".local", "share", "Trash", "files");
+    io.mkdirSync(bin, { recursive: true });
+    const dest = join(bin, `${basename(target)}-${io.now()}`);
+    moveWithExdevFallback(target, dest, io);
     return dest;
   }
 }
 
-// Unpacks a ZIP with the system's own tools: tar on macOS and Windows 10+ is bsdtar, which reads ZIPs; unzip is the
-// fallback (Linux, older Windows). Returns every file inside, however deeply the archive nested them.
-export function extractZip(zip: string, dest: string): string[] {
+export function extractZip(zip: string, dest: string, exec: typeof execFileSync = execFileSync): string[] {
   mkdirSync(dest, { recursive: true });
   try {
-    execFileSync("tar", ["-xf", zip, "-C", dest], { stdio: "ignore" });
+    exec("tar", ["-xf", zip, "-C", dest], { stdio: "ignore" });
   } catch {
-    execFileSync("unzip", ["-o", "-q", zip, "-d", dest], { stdio: "ignore" });
+    exec("unzip", ["-o", "-q", zip, "-d", dest], { stdio: "ignore" });
   }
   const files: string[] = [];
   const walk = (dir: string) => {
@@ -78,13 +118,12 @@ export function extractZip(zip: string, dest: string): string[] {
   return files;
 }
 
-// Opens a page in the default browser.
-export function openUrl(url: string): void {
+export function openUrl(url: string, io: Pick<PlatformFs, "platform" | "execFileSync"> = defaultPlatformFs()): void {
   try {
-    if (IS_MAC) execFileSync("open", [url], { stdio: "ignore" });
-    else if (IS_WIN) execFileSync("cmd", ["/c", "start", "", url], { stdio: "ignore", windowsHide: true });
-    else execFileSync("xdg-open", [url], { stdio: "ignore" });
+    if (io.platform === "darwin") io.execFileSync("open", [url], { stdio: "ignore" });
+    else if (io.platform === "win32") io.execFileSync("cmd", ["/c", "start", "", url], { stdio: "ignore", windowsHide: true });
+    else io.execFileSync("xdg-open", [url], { stdio: "ignore" });
   } catch {
-    // Opening the browser is a convenience; the address is printed either way.
+    // Convenience launch; caller also prints URL.
   }
 }

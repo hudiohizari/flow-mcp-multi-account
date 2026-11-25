@@ -1,0 +1,57 @@
+export const STATIC_ROUTES = {
+  HOME: "/",
+  HEALTH: "/api/health",
+  FAVICON: "/favicon.ico",
+  LOCALE_EN: "/locales/en.json",
+  MEDIA: "/media",
+  UPLOAD: "/api/upload",
+  STUDIO_PREFIX: "/studio/",
+  SHARED_PREFIX: "/shared/",
+  API_PREFIX: "/api/",
+} as const;
+
+export const API_METHODS = [
+  "status",
+  "generate",
+  "wait",
+  "cancel",
+  "retry",
+  "assets",
+  "download",
+  "assemble",
+  "techniques",
+  "voices",
+  "narrate",
+  "new_project",
+  "character",
+  "characters",
+  "character_edit",
+  "edit",
+  "trash",
+  "discard",
+  "set_key",
+  "continue_shot",
+  "agent",
+  "outputs",
+  "transcribe",
+  "caption_preview",
+  "captions",
+  "presenter",
+  "caption_setup",
+  "accounts",
+  "account_add",
+  "account_switch",
+  "account_login",
+  "account_rename",
+  "account_enable",
+  "account_reorder",
+  "account_remove",
+  "account_refresh",
+  "account_config",
+  "cast",
+] as const;
+
+export type ApiMethod = (typeof API_METHODS)[number];
+export const API_METHOD_SET: ReadonlySet<string> = new Set(API_METHODS);
+
+export const apiPath = (method: ApiMethod): string => `${STATIC_ROUTES.API_PREFIX}${method}`;
