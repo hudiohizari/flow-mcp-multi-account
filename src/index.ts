@@ -1,88 +1,38 @@
 #!/usr/bin/env node
-import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { getConfig } from "./config.js";
 import { LocalCore, shapes, type Core } from "./core.js";
+import { registerAccountTools } from "./mcp-accounts.js";
+import { createPatienceRunner } from "./mcp-patience.js";
 import { PLAYBOOK } from "./playbook.js";
 import { RemoteCore } from "./remote.js";
-import { PORT, startServer } from "./server.js";
+import { startOwnerServer } from "./server.js";
 
+const cfg = getConfig();
 const local = new LocalCore();
-const role = await startServer(local);
-const core: Core = role === "client" ? new RemoteCore() : local;
-const studio = role === "none" ? undefined : `http://127.0.0.1:${PORT}`;
+const handle = await startOwnerServer(local, {
+  getCastDir: () => local.getActiveCastDir(),
+  getRegistryError: () => local.getRegistryError(),
+});
+const core: Core = handle.role === "client" ? new RemoteCore() : local;
+const studio = handle.role === "none" ? undefined : `http://127.0.0.1:${cfg.port}`;
+
+if (handle.role === "owner") {
+  let shuttingDown = false;
+  const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    void Promise.allSettled([handle.close(), local.close()]).then(() => process.exit(0));
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+}
 
 const server = new McpServer({ name: "flow-mcp", version: "0.2.0" });
+const { reply, patient, waitFor, slowCalls, hasSlowCalls } = createPatienceRunner(core, cfg.patienceMs);
 
-type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
-const reply = async (work: Promise<unknown>, extra: object = {}): Promise<ToolResult> => {
-  try {
-    const data = await work;
-    const body = Array.isArray(data) ? data : { ...(data as object), ...extra };
-    return { content: [{ type: "text", text: JSON.stringify(body, null, 2) }] };
-  } catch (err) {
-    return { content: [{ type: "text", text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }, null, 2) }], isError: true };
-  }
-};
-
-// Most AI apps stop waiting on a tool after about a minute (the MCP default, and Codex's), but Flow is often slower: a
-// character edit takes one to two minutes. The work carried on while the app reported "Request timed out", so finished
-// work looked failed - and a shot was once paid for twice. No call holds on longer than this now; anything slower hands
-// back a task id and keeps going, and flow_wait collects the answer.
-// FLOW_MCP_PATIENCE_MS lowers it for an app with a shorter limit (and lets a test reach the slow path quickly).
-const PATIENCE_MS = Number(process.env.FLOW_MCP_PATIENCE_MS ?? 45_000);
-const WAIT_MS = Math.max(5_000, PATIENCE_MS - 5_000);
-type Task = { task_id: string; tool: string; started: string; status: "running" | "done" | "failed"; result?: unknown; error?: string };
-const tasks = new Map<string, Task>();
-
-const patient = async (tool: string, work: Promise<unknown>): Promise<unknown> => {
-  const task: Task = { task_id: `task-${randomUUID().slice(0, 8)}`, tool, started: new Date().toISOString(), status: "running" };
-  const settled = work.then(
-    (result) => {
-      task.status = "done";
-      task.result = result;
-    },
-    (err) => {
-      task.status = "failed";
-      task.error = err instanceof Error ? err.message : String(err);
-    },
-  );
-  let timer: NodeJS.Timeout | undefined;
-  const late = new Promise<"late">((r) => (timer = setTimeout(() => r("late"), PATIENCE_MS)));
-  const first = await Promise.race([settled.then(() => "settled" as const), late]);
-  clearTimeout(timer);
-  if (first === "settled") return work;
-  tasks.set(task.task_id, task);
-  return {
-    still_working: true,
-    task_id: task.task_id,
-    note: `Flow is still on it - this is not a failure. Call flow_wait with job_ids ["${task.task_id}"] for the result, and do not call ${tool} again: the work has not stopped.`,
-  };
-};
-
-// Task ids are answered from here, queued job ids by the queue; either way the call comes back inside the app's limit.
-async function waitFor({ job_ids, timeout_seconds }: { job_ids?: string[]; timeout_seconds: number }): Promise<unknown> {
-  const deadline = Date.now() + Math.min(timeout_seconds * 1000, WAIT_MS);
-  const isTask = (id: string) => tasks.has(id) || id.startsWith("task-");
-  const mine = (job_ids ?? []).filter(isTask);
-  const jobs = job_ids?.filter((id) => !isTask(id));
-  while (Date.now() < deadline && mine.some((id) => tasks.get(id)?.status === "running")) await new Promise((r) => setTimeout(r, 1000));
-  // A task id this process never issued belongs to a tool process that has since restarted: its answer is gone, but the
-  // work may well have happened, so say that instead of reporting it finished.
-  const done = mine.map(
-    (id) =>
-      tasks.get(id) ?? {
-        task_id: id,
-        status: "unknown",
-        note: "This tool restarted since that call, so its answer is lost. Check Flow (flow_assets, flow_characters) for what it did before running it again.",
-      },
-  );
-  const tasksFinished = done.every((t) => t.status !== "running");
-  if (mine.length && !jobs?.length) return { finished: tasksFinished, tasks: done };
-  const left = Math.max(5, Math.floor((deadline - Date.now()) / 1000));
-  const queued = (await core.wait({ job_ids: jobs, timeout_seconds: left })) as { finished: boolean };
-  return mine.length ? { ...queued, finished: queued.finished && tasksFinished, tasks: done } : queued;
-}
+registerAccountTools(server, core, { reply, patient });
 
 server.registerTool(
   "flow_status",
@@ -93,7 +43,12 @@ server.registerTool(
     inputSchema: shapes.status,
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
-  (args) => reply(core.status(args), { studio, playbook: PLAYBOOK, ...(tasks.size ? { slow_calls: [...tasks.values()].map(({ result, ...t }) => t) } : {}) }),
+  (args) =>
+    reply(core.status(args), {
+      studio,
+      playbook: PLAYBOOK,
+      ...(hasSlowCalls() ? { slow_calls: slowCalls() } : {}),
+    }),
 );
 
 server.registerTool(
@@ -101,7 +56,7 @@ server.registerTool(
   {
     title: "Queue Flow generations",
     description:
-      "Queue one clip or image per scene in the open Flow project. Runs one at a time with human-like pauses and spends the user's Google AI credits (per video, at 720p: Omni 1.2 Flash 3 a second up to 10 s and 6 a second after, so 30 for 10 s and 60 for 15 s; at 360p a third of that; Veo 3.1 Lite 10; images 0). Each scene is checked against max_credits using Flow's own quote before anything is spent. Returns job ids immediately; use flow_wait for results.",
+      "Queue one clip or image per scene in the open Flow project. Runs one at a time with human-like pauses and spends Google AI credits within max_credits. Returns job ids immediately; use flow_wait for results.",
     inputSchema: shapes.generate,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
@@ -113,7 +68,7 @@ server.registerTool(
   {
     title: "Wait for Flow jobs",
     description:
-      "Wait for queued jobs (default: all), or for the task_id of a call that answered still_working, then return their status, results and file paths. Comes back within about 40 s even when they are still running: call again until finished is true.",
+      "Wait for queued jobs (default: all), or for the task_id of a call that answered still_working, then return their status, results and file paths.",
     inputSchema: shapes.wait,
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
@@ -135,7 +90,7 @@ server.registerTool(
   "flow_retry",
   {
     title: "Retry failed Flow jobs",
-    description: "Put failed jobs back in the queue with the same settings and file names (default: all failed jobs). Scenes already retry once on their own when Flow reports a failure. An image batch that finished with some images still failed (its job lists failed_scenes) is not run again whole: only those images are made again, saved under their own scene numbers.",
+    description: "Put failed jobs back in the queue with the same settings and file names for the active account.",
     inputSchema: shapes.retry,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
@@ -146,7 +101,7 @@ server.registerTool(
   "flow_assets",
   {
     title: "List project media",
-    description: "List the images and videos in the open Flow project (title and kind). Titles can be used as 'asset:<title>' in flow_generate or with flow_download.",
+    description: "List the images and videos in the open Flow project (title and kind).",
     inputSchema: shapes.assets,
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
@@ -157,8 +112,7 @@ server.registerTool(
   "flow_download",
   {
     title: "Download existing project media",
-    description:
-      "Download media that already exists in the Flow project, without regenerating it (no credits, including 1080p/2K upscales). Matches by the start of the title. `collection` fetches a whole Flow collection as ONE ZIP (originals, each under its own title): agent image batches put their images in a collection named <folder>-<job id> and download it that way.",
+    description: "Download media that already exists in the Flow project without regenerating it.",
     inputSchema: shapes.download,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
@@ -169,8 +123,7 @@ server.registerTool(
   "flow_agent_images",
   {
     title: "Fast image batch via Flow's agent",
-    description:
-      "Hand up to 50 image scenes to Flow's own Agent mode, which renders them all in parallel (minutes for a whole batch instead of one paced job per scene) and enriches each prompt itself. Images only, 0 credits. Pass `references` (characters, places, objects, each with a short name) to attach them once in the agent's composer, the way its + button does, and `scene_references` to say which scenes use which, so a whole story stays on-model. Scenes the agent drops are asked for again, then made one by one with their references. The finished images are moved into one Flow collection (<folder>-<job id>) and downloaded as ONE ZIP of originals, not one by one; if that download stops, the job fails without making anything again and flow_download with `collection` fetches them. Less exact than flow_generate: the agent picks the wording, no techniques, and each image is matched back to its scene by its stored prompt. Returns a job id; use flow_wait.",
+    description: "Hand up to 50 image scenes to Flow's Agent mode and download the finished collection ZIP.",
     inputSchema: shapes.agent,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
@@ -181,8 +134,7 @@ server.registerTool(
   "flow_edit",
   {
     title: "Edit an existing video",
-    description:
-      "Video-to-video edit of a clip already in the Flow project (relight, change weather/background, remove or restyle objects) using Flow's edit view. Queued like a generation; use flow_wait for the file. Spends credits without a prior quote (about 20 for a 4 s clip), so ask the user before calling.",
+    description: "Video-to-video edit of a clip already in the Flow project. Queued like a generation; use flow_wait for the file.",
     inputSchema: shapes.edit,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
@@ -193,8 +145,7 @@ server.registerTool(
   "flow_continue",
   {
     title: "Continue a clip, keeping a character attached",
-    description:
-      "Start a new clip from the last frame of one already in the project, for a continuous take across a cut. It saves the source clip's real final frame, animates it through Flow's agent mode, and downloads the result. mode 'exact' (default) gives an invisible join - the clip opens on the actual last frame - but attached characters are ignored, so the likeness must come from that frame; mode 'likeness' keeps a character or your avatar locked at the cost of an only-approximate opening frame. Flow cannot do both at once. Agent mode shows no credit quote beforehand, so ask the user before calling. Queued like a generation; use flow_wait for the file.",
+    description: "Start a new clip from the last frame of one already in the project using Flow's agent mode.",
     inputSchema: shapes.continue_shot,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
@@ -205,8 +156,7 @@ server.registerTool(
   "flow_trash",
   {
     title: "Move an item to Flow's Trash",
-    description:
-      "Move one image, video or scene in the open Flow project to Flow's Trash, by its exact title from flow_assets. Recoverable: Flow keeps it in Trash with a Restore button. Never deletes permanently. Flow asks no confirmation of its own, so confirm with the user before calling. Refuses if two items share the title.",
+    description: "Move one image, video or scene in the open Flow project to Flow's Trash by exact title.",
     inputSchema: shapes.trash,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
   },
@@ -217,8 +167,7 @@ server.registerTool(
   "flow_character",
   {
     title: "Create a reusable character",
-    description:
-      "Create a reusable Flow character (person, mascot, product) so it looks the same in every scene. Free. Give `describe` and Flow draws the portrait first, or `image` to use a picture you already have; optionally a personality and a stock voice. Afterwards pass 'asset:<name>' in a scene's reference_images.",
+    description: "Create a reusable Flow character (person, mascot, product). Free.",
     inputSchema: shapes.character,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
@@ -229,8 +178,7 @@ server.registerTool(
   "flow_character_edit",
   {
     title: "Restyle an existing character",
-    description:
-      "Change how an existing character looks without creating a new one (Flow redraws the portrait in place, free), and save the new portrait to <films>/_cast. The character keeps its name, personality and voice, so every scene that references it picks up the new look. Pass `look` with the full updated description so scene prompts stop quoting the old one. With no `change` it only saves the current portrait.",
+    description: "Change how an existing character looks in place and save the new portrait.",
     inputSchema: shapes.character_edit,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
@@ -241,7 +189,7 @@ server.registerTool(
   "flow_new_project",
   {
     title: "Start a new Flow project",
-    description: "Create a new, empty Google Flow project and open it in the Flow window, optionally with a name - for starting a film or ad from scratch. Free. Characters belong to a project, so make them again in the new one.",
+    description: "Create a new, empty Google Flow project and open it in the Flow window.",
     inputSchema: shapes.new_project,
     annotations: { openWorldHint: true },
   },
@@ -252,7 +200,7 @@ server.registerTool(
   "flow_characters",
   {
     title: "List characters",
-    description: "List the reusable characters in the open Flow project. Each can be used in a scene as 'asset:<name>'.",
+    description: "List the reusable characters in the open Flow project.",
     inputSchema: shapes.characters,
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
@@ -263,8 +211,7 @@ server.registerTool(
   "flow_techniques",
   {
     title: "Film technique presets",
-    description:
-      "List ready-made prompt phrases for camera moves, product shots, first→last-frame transitions and image commands. Pass an id as a scene's `technique` in flow_generate.",
+    description: "List ready-made prompt phrases for camera moves, product shots, transitions and image commands.",
     inputSchema: shapes.techniques,
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   },
@@ -275,8 +222,7 @@ server.registerTool(
   "flow_narrate",
   {
     title: "Record narration",
-    description:
-      "Record narration as an .m4a, free. The default `engine: \"kokoro\"` is Kokoro, a voice that runs on this computer: no key, no daily limit, any length, 28 English voices (flow_voices lists them; default am_michael) and a `speed`. The first Kokoro take downloads its model once (326 MB, about a minute). `engine: \"gemini\"` uses Google AI Studio's text-to-speech (the same voices Flow has, a free key in ~/.flow-mcp/gemini-key, a daily limit, takes a short `style` note); if that limit is used up the line is recorded with Kokoro and the result says so. Neither costs credits. Record a whole narration in one take; flow_assemble can lay it over a film.",
+    description: "Record narration as an .m4a using Kokoro (local) or Gemini TTS.",
     inputSchema: shapes.narrate,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
@@ -287,7 +233,7 @@ server.registerTool(
   "flow_voices",
   {
     title: "List Flow voices",
-    description: "Narrator voices available for flow_narrate: Kokoro's (free, on this computer, with whether its model is downloaded yet) and Google AI Studio's (with whether a key is set up).",
+    description: "Narrator voices available for flow_narrate (Kokoro and Google AI Studio).",
     inputSchema: shapes.voices,
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   },
@@ -298,8 +244,7 @@ server.registerTool(
   "flow_assemble",
   {
     title: "Assemble clips into one video",
-    description:
-      "Join a project's downloaded scene clips in order into one MP4 (local ffmpeg, no credits). Keeps each clip's own sound and can lay a music track and a voiceover on top.",
+    description: "Join downloaded scene clips in order into one MP4 with local ffmpeg.",
     inputSchema: shapes.assemble,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
@@ -310,8 +255,7 @@ server.registerTool(
   "flow_transcribe",
   {
     title: "Hear the words in a video or audio file",
-    description:
-      "Transcribe a video or audio file on this computer with every word's start and end time (whisper.cpp, local and free, about 100 languages; pass `language` when you know it. The first call in English downloads a 148 MB speech model once, in any other language a 574 MB one). Use the times to check a take said the right words and to cut lines out of it for flow_assemble's voice_lines.",
+    description: "Transcribe a video or audio file locally with whisper.cpp.",
     inputSchema: shapes.transcribe,
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
@@ -322,8 +266,7 @@ server.registerTool(
   "flow_captions",
   {
     title: "Add captions to a video",
-    description:
-      "Burn spoken-word captions into a video, in the style short-form apps use, for landscape or vertical footage (local and free: whisper.cpp hears the words on this computer, nothing is uploaded). Styles: bold (big capitals, the spoken word lights up), highlight, reveal, clean, boxed. Works in about 100 languages, including ones written without spaces (Japanese, Chinese, Thai) and right to left (Arabic, Hebrew); pass `language` (en, es, tr, ja...) whenever you know it. The first call downloads a speech model once: 148 MB for English, 574 MB for other languages. Saves <name>-captions.mp4 plus an .srt. Before calling this, call flow_transcribe, show the user the words with any likely mishearings fixed, and get their OK: then pass the agreed words as `text` (matching words keep their timing), so the video is made once, right.",
+    description: "Burn spoken-word captions into a video locally.",
     inputSchema: shapes.captions,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
@@ -334,8 +277,7 @@ server.registerTool(
   "flow_presenter",
   {
     title: "Talking presenter over footage",
-    description:
-      "Build an explainer from one recording of a talking presenter (an avatar video, say): each stretch shows them full frame, with an optional slow zoom, or in a circle in a corner over another clip. Their sound plays throughout. Local and free. Add music, loudness and watermark removal afterwards with flow_assemble.",
+    description: "Build an explainer from a talking presenter recording over footage.",
     inputSchema: shapes.presenter,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },

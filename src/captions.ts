@@ -6,7 +6,8 @@ import { basename, extname, join } from "node:path";
 import { promisify } from "node:util";
 import { chromium, type Browser, type Page } from "playwright-core";
 
-import { chromeExecutable, HOME_DIR } from "./chrome.js";
+import { chromeExecutable } from "./chrome.js";
+import { getConfig } from "./config.js";
 import { FFMPEG_HINT, IS_MAC, IS_WIN } from "./platform.js";
 
 // Captions in the style short-form apps use, burned into the picture. The words and their timings come from
@@ -19,8 +20,8 @@ const FFMPEG = process.env.FLOW_MCP_FFMPEG ?? "ffmpeg";
 const FFPROBE = process.env.FLOW_MCP_FFPROBE ?? "ffprobe";
 const WHISPER = process.env.FLOW_MCP_WHISPER ?? "whisper-cli";
 // Transcripts and preview stills; the panel is allowed to show pictures from here.
-export const CACHE_DIR = join(HOME_DIR, "captions");
-const MODEL_DIR = join(HOME_DIR, "models");
+export const cacheDir = () => getConfig().captionsDir;
+const modelDir = () => getConfig().modelsDir;
 // Speech models fetched the first time they are needed, from whisper.cpp's own collection on Hugging Face
 // (FLOW_MCP_MODEL_BASE points at a mirror folder holding the same files). The sizes are what the panel tells the user.
 const SPEECH_MODELS = {
@@ -132,7 +133,7 @@ const LEAD = 0.12;
 
 /* ---------- hearing the words ---------- */
 
-const MODEL_DIRS = [MODEL_DIR, join(homedir(), ".cache", "whisper-models"), join(homedir(), ".cache", "whisper.cpp")];
+const modelDirs = () => [modelDir(), join(homedir(), ".cache", "whisper-models"), join(homedir(), ".cache", "whisper.cpp")];
 const PREFERENCE: Record<SpeechModel, string[]> = {
   // English-only models time words best. large-v3-turbo is the most accurate listener but placed "picks" 0.6 s early
   // in an English test where small.en was 30 ms out, so for English it is only a fallback.
@@ -144,7 +145,7 @@ const PREFERENCE: Record<SpeechModel, string[]> = {
   detect: ["ggml-base-q5_1.bin", "ggml-base.bin", "ggml-small-q5_1.bin", "ggml-small.bin", "ggml-large-v3-turbo-q5_0.bin", "ggml-large-v3-turbo.bin", "ggml-medium.bin", "ggml-large-v3.bin"],
   vad: ["ggml-silero-v5.1.2.bin"],
 };
-const installed = (kind: SpeechModel): string | undefined => PREFERENCE[kind].flatMap((name) => MODEL_DIRS.map((d) => join(d, name))).find((p) => existsSync(p));
+const installed = (kind: SpeechModel): string | undefined => PREFERENCE[kind].flatMap((name) => modelDirs().map((d) => join(d, name))).find((p) => existsSync(p));
 
 // The model that hears one language, downloaded the first time it is needed. English gets its own model even when a
 // multilingual one is there, for the timing; a multilingual model only stands in when that download fails.
@@ -185,7 +186,7 @@ export async function captionSetup(): Promise<{
   // how big the wait will be.
   const models = { english: forced || Boolean(installed("english")), other: forced || Boolean(installed("other")), detect: forced || Boolean(installed("detect")), vad: Boolean(installed("vad")) };
   const download_mb = { english: SPEECH_MODELS.english.mb, other: SPEECH_MODELS.other.mb, detect: SPEECH_MODELS.detect.mb, vad: SPEECH_MODELS.vad.mb };
-  return { ready: whisper, whisper, whisper_hint: whisper ? undefined : WHISPER_HINT, models, download_mb, languages: CAPTION_LANGUAGES, models_dir: MODEL_DIR };
+  return { ready: whisper, whisper, whisper_hint: whisper ? undefined : WHISPER_HINT, models, download_mb, languages: CAPTION_LANGUAGES, models_dir: modelDir() };
 }
 
 // Fetched by itself the first time captions are needed (the user chose this over a button, 2026-10-09). One download
@@ -196,10 +197,11 @@ function fetchModel(kind: SpeechModel): Promise<string> {
   const { file, mb, purpose } = SPEECH_MODELS[kind];
   const pending = fetching.get(kind);
   if (pending) return pending;
+  const modelsRoot = modelDir();
   const job = (async () => {
-    const dest = join(MODEL_DIR, file);
+    const dest = join(modelsRoot, file);
     if (existsSync(dest)) return dest;
-    mkdirSync(MODEL_DIR, { recursive: true });
+    mkdirSync(modelsRoot, { recursive: true });
     // curl, not fetch: Node's built-in fetch can crash the whole process on an assertion (undici, "assert(!this.paused)")
     // when a server closes the connection mid-stream - seen while testing this, and here that process is the panel or
     // Claude's connector. curl ships with macOS and Windows 10+, follows the redirect to the download host, and can
@@ -218,7 +220,7 @@ function fetchModel(kind: SpeechModel): Promise<string> {
   })()
     .catch((e: Error) => {
       throw new Error(
-        `Captions need a speech model ${purpose}, downloaded once (${mb} MB), and the download failed: ${e.message}. Check the internet connection and try again, or put ${file} in ${MODEL_DIR} yourself.`,
+        `Captions need a speech model ${purpose}, downloaded once (${mb} MB), and the download failed: ${e.message}. Check the internet connection and try again, or put ${file} in ${modelsRoot} yourself.`,
       );
     })
     .finally(() => fetching.delete(kind));
@@ -421,9 +423,9 @@ export async function transcribe(video: string, language = "auto"): Promise<Tran
   const clean = voiceLength > 0 && voiceLength <= info.duration + 1 ? voice : undefined;
   const vst = clean ? statSync(clean) : undefined;
   const cacheFile = (...parts: string[]) =>
-    join(CACHE_DIR, `${createHash("sha1").update([video, st.size, st.mtimeMs, ...(vst ? [clean!, vst.size, vst.mtimeMs] : []), "spans-v7", ...parts].join("|")).digest("hex").slice(0, 16)}.json`);
+    join(cacheDir(), `${createHash("sha1").update([video, st.size, st.mtimeMs, ...(vst ? [clean!, vst.size, vst.mtimeMs] : []), "spans-v7", ...parts].join("|")).digest("hex").slice(0, 16)}.json`);
   const keep = (t: Transcript, ...files: (string | undefined)[]) => {
-    mkdirSync(CACHE_DIR, { recursive: true });
+    mkdirSync(cacheDir(), { recursive: true });
     for (const f of files) if (f) writeFileSync(f, JSON.stringify(t));
     return t;
   };
@@ -785,12 +787,13 @@ export async function previewCaptions(video: string, opts: CaptionOptions): Prom
   const state = states.find((s) => mid && s.from <= mid.start + 0.01 && s.to > mid.start && s.scale === 1) ?? states.find((s) => s.scale === 1);
   const at = state ? (state.from + state.to) / 2 : Math.min(1, info.duration / 2);
 
-  mkdirSync(CACHE_DIR, { recursive: true });
+  const cdir = cacheDir();
+  mkdirSync(cdir, { recursive: true });
   const key = createHash("sha1").update(video).digest("hex").slice(0, 12);
-  const frame = join(CACHE_DIR, `frame-${key}.jpg`);
+  const frame = join(cdir, `frame-${key}.jpg`);
   await run(FFMPEG, ["-v", "error", "-y", "-ss", at.toFixed(3), "-i", video, "-frames:v", "1", "-q:v", "3", frame], BIG);
   const background = `data:image/jpeg;base64,${readFileSync(frame).toString("base64")}`;
-  const image = join(CACHE_DIR, `preview-${key}.jpg`);
+  const image = join(cdir, `preview-${key}.jpg`);
   await withPage(info.width, info.height, pageHtml(o.style, { ...info, position: o.position, size: o.size, color: pickColor(o), letters: lettersOf(o), lang, names: namesIn(words, o.names), background }), async (p) => {
     if (state) await p.evaluate((s) => (window as unknown as { paint: (s: unknown) => void }).paint(s), state);
     await p.screenshot({ path: image, type: "jpeg", quality: 85 });

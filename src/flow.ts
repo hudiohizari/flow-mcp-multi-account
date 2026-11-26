@@ -1,43 +1,73 @@
-import { closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import type { Locator, Page } from "playwright-core";
-import { HOME_DIR, getFlowPage, inEnglish } from "./chrome.js";
+import { getActiveAccountPaths, writeFileAtomic } from "./account-paths.js";
+import { getDefaultChromeManager, inEnglish, isSignInUrl } from "./chrome.js";
+import { getConfig } from "./config.js";
+import { AppError, ERROR_CODES } from "./errors.js";
+import {
+  classifyTileFailure,
+  CreditExhaustedError,
+  evaluatePreSubmitCredits,
+  isCreditExhaustedText,
+  parseBalanceCredits,
+  parseQuotedCredits,
+} from "./flow-credits.js";
+import { t } from "./i18n.js";
 import type { Job } from "./queue.js";
 import { extractZip } from "./platform.js";
 
+export { matchScenes } from "./flow-agent-plan.js";
+
 export interface FlowState {
   url: string;
+  connected?: boolean;
   signedIn: boolean;
   inProject: boolean;
+  authInProgress?: boolean;
   plan?: string;
   credits_remaining?: number;
+  balanceUpdatedAt?: string;
   composer?: string;
   hint?: string;
 }
+
+const getFlowPage = async () => {
+  const { profileDir, lastProjectUrl } = getActiveAccountPaths();
+  return (await getDefaultChromeManager().getFlowPage(profileDir, lastProjectUrl)).page;
+};
 
 const IMAGE_TIMEOUT_MS = 3 * 60_000;
 const VIDEO_TIMEOUT_MS = 12 * 60_000;
 const FAILURE_TEXT = /failed|couldn.t|unable/i;
 
-const pause = (page: Page, ms: number) => page.waitForTimeout(ms);
+export const pause = (page: Page, ms: number) => page.waitForTimeout(ms);
 
 // `detailed` opens the account panel to read the balance, so it must not run while a generation is driving the page.
 export async function getFlowState(detailed = false): Promise<FlowState> {
-  const page = await getFlowPage();
+  const cfg = getConfig();
+  const { profileDir, lastProjectUrl } = getActiveAccountPaths();
+  const { page, authInProgress } = await getDefaultChromeManager().getFlowPage(profileDir, lastProjectUrl);
   const url = page.url();
-  // Signed-out visitors are bounced to the marketing page or Google's sign-in.
-  const signedIn = !/\/about|accounts\.google\.com/.test(url);
-  const inProject = /\/project\//.test(url);
-  const state: FlowState = { url, signedIn, inProject };
-  if (!signedIn) state.hint = "Not signed in. Run `npm run login` and sign in to Google in the Flow Chrome window.";
-  else if (!inProject) state.hint = "Signed in, but no project is open. Open or create a project in the Flow Chrome window.";
+  const signedIn = !authInProgress && !isSignInUrl(url, cfg);
+  const inProject = signedIn && /\/project\//.test(url);
+  const state: FlowState = { url, connected: true, signedIn, inProject, authInProgress };
+  if (!signedIn) state.hint = authInProgress ? t("hint.authInProgress") : t("hint.signIn");
+  else if (!inProject) state.hint = t("hint.noProject");
   else if (detailed) {
-    state.plan = await page.getByRole("button", { name: "Account details" }).innerText().then((t) => t.trim().split("\n")[0], () => undefined);
+    state.plan = await page.getByRole("button", { name: "Account details" }).innerText().then((x) => x.trim().split("\n")[0], () => undefined);
     state.credits_remaining = await readCredits(page).catch(() => undefined);
-    state.composer = await settingsTrigger(page).innerText().then((t) => t.replace(/\s+/g, " ").trim(), () => undefined);
+    state.composer = await settingsTrigger(page).innerText().then((x) => x.replace(/\s+/g, " ").trim(), () => undefined);
   }
   return state;
+}
+
+export async function requireFlowProject(): Promise<Page> {
+  const state = await getFlowState();
+  if (!state.signedIn) throw new AppError(503, ERROR_CODES.AUTH_REQUIRED, state.hint ?? t("error.AUTH_REQUIRED"));
+  if (!state.inProject) throw new AppError(409, ERROR_CODES.NOT_IN_PROJECT, state.hint ?? t("error.NOT_IN_PROJECT"));
+  return getFlowPage();
 }
 
 // Menus close on Escape; the account panel does not and needs its own close button.
@@ -86,19 +116,30 @@ async function closeAgentSettings(page: Page): Promise<void> {
 }
 
 // The balance only shows inside the account panel. That panel also holds "Sign out": never touch anything else in it.
-async function readCredits(page: Page): Promise<number | undefined> {
+export async function readCredits(page: Page): Promise<number | undefined> {
   await dismissOverlays(page);
   await scrollToTop(page);
   await page.getByRole("button", { name: "Account details" }).click({ timeout: 5000 });
   const link = page.getByRole("link", { name: /Google Flow credits/ });
   try {
     await link.waitFor({ state: "visible", timeout: 5000 });
-    const n = Number((await link.innerText()).replace(/[^\d]/g, ""));
-    return Number.isNaN(n) ? undefined : n;
+    return parseBalanceCredits(await link.innerText());
   } finally {
     await dismissOverlays(page);
     await pause(page, 300);
   }
+}
+
+export async function hasInsufficientCreditsUi(page: Page): Promise<boolean> {
+  const addLink = page.getByRole("link", { name: /add ai credits/i }).first();
+  if (await addLink.isVisible().catch(() => false)) return true;
+  const addBtn = page.getByRole("button", { name: /add ai credits/i }).first();
+  if (await addBtn.isVisible().catch(() => false)) return true;
+  const alertText = await page
+    .locator('.cdk-overlay-container, flow-base-prompt-box, [role="alert"], [role="status"]')
+    .allInnerTexts()
+    .then((xs) => xs.join("\n"), () => "");
+  return isCreditExhaustedText(alertText);
 }
 
 const settingsTrigger = (page: Page) => page.getByRole("button", { name: "Settings trigger" });
@@ -125,7 +166,7 @@ export async function mediaIds(page: Page): Promise<string[]> {
 
 // The grid is virtualised and the top bar hides once it is scrolled, so every step starts from the top,
 // where new tiles appear.
-async function scrollToTop(page: Page): Promise<void> {
+export async function scrollToTop(page: Page): Promise<void> {
   await page.evaluate(() => document.querySelectorAll(".page-container").forEach((e) => (e.scrollTop = 0)));
   await pause(page, 400);
 }
@@ -137,7 +178,7 @@ const tileOf = (page: Page, asset: FlowAsset) =>
     ? page.locator(`flow-grid-tile-container[aria-label="${asset.name.replace(/"/g, '\\"')}"]`).first()
     : mediaTile(page, asset.id!);
 
-const mediaTile = (page: Page, id: string) =>
+export const mediaTile = (page: Page, id: string) =>
   page
     .locator(
       id.startsWith("title:")
@@ -164,14 +205,13 @@ export async function newErrorTiles(page: Page, known: Iterable<string>): Promis
 // Flow says WHY on the tile (".error-message-text"): a busy server, or a policy refusal such as "This prompt might
 // violate our policies about generating prominent people". The second never succeeds on retry, so it must not be
 // retried and the user must see Flow's own words, not a generic "failed".
-async function errorReason(page: Page): Promise<string> {
+export async function errorReason(page: Page): Promise<string> {
   return page
     .locator("flow-grid-tile-container flow-error-tile")
     .first()
     .evaluate((el) => ((el.querySelector(".error-message-text") as HTMLElement | null)?.innerText || (el as HTMLElement).innerText).replace(/\s+/g, " ").trim())
     .catch(() => "");
 }
-const POLICY = /polic|violat|prominent|safety|not allowed|guideline/i;
 
 // Flow's Retry replaces the failed tile with a fresh render of the same prompt and settings, free of charge.
 // Tiles produced by Agent mode only offer Delete, so the button may not be there at all.
@@ -298,11 +338,16 @@ async function waitForNewMedia(page: Page, before: string[], count: number, time
     if (!errors) continue;
     failures += errors;
     const reason = await errorReason(page);
-    if (POLICY.test(reason)) {
+    const failureKind = classifyTileFailure(reason);
+    if (failureKind === "policy") {
       const hint = /prominent|public figure|celebrit/i.test(reason)
         ? " Flow thinks a face in this scene looks like a real, well-known person, usually one from an uploaded photo or a character made from one. Retrying will not change that: use a character drawn from a description (flow_character with `describe`) instead."
         : " Retrying the same prompt will not change that.";
       throw new Error(`Flow refused this generation on policy grounds: "${reason}" Nothing was charged.${hint}`);
+    }
+    if (failureKind === "credit_exhausted") {
+      const creditsRemaining = await readCredits(page).catch(() => undefined);
+      throw new CreditExhaustedError({ requiredCost: job?.credits, creditsRemaining, reason });
     }
     if (retriesLeft > 0) {
       retriesLeft--;
@@ -430,7 +475,7 @@ async function applySettings(page: Page, job: Job): Promise<number> {
   await pause(page, 600);
   // The quote is "<N> credits". Low balances add an "Add AI credits" banner link that the old /credits?$/ also matched.
   const costText = await page.getByRole("link", { name: /^\d[\d,]*\s+credits?$/ }).first().innerText();
-  const cost = Number(costText.match(/\d+/)?.[0] ?? NaN);
+  const cost = parseQuotedCredits(costText);
   await closeSettings(page);
   if (Number.isNaN(cost)) throw new Error(`Could not read the credit cost from Flow ("${costText}").`);
   return cost;
@@ -453,7 +498,7 @@ async function waitForUpload(page: Page, name: string, timeoutMs: number): Promi
 
 // Uploads under a unique filename so the asset can be picked unambiguously afterwards.
 // "asset:<name>" refers to something already in the Flow project (image, video, character) and skips the upload.
-async function uploadAsset(page: Page, job: Job, file: string, label: string): Promise<string> {
+export async function uploadAsset(page: Page, job: Job, file: string, label: string): Promise<string> {
   if (file.startsWith(ASSET_PREFIX)) return file.slice(ASSET_PREFIX.length).trim();
   if (!existsSync(file)) throw new Error(`File not found: ${file}`);
   const name = `fm-${job.id}-${label}${extname(file).toLowerCase()}`;
@@ -570,19 +615,15 @@ function tileByIdOrTitle(page: Page, id: string, title?: string): TileResolver {
   };
 }
 
-const DOWNLOAD_DIR = join(HOME_DIR, "downloads");
-let downloadsReady = false;
+const downloadDir = () => getConfig().downloadsDir;
 
 // Playwright keeps a download in a per-connection temp file it can delete from under us; pointing Chrome itself at a
 // directory we own makes the bytes ours the moment they land.
 async function useOwnDownloadDir(page: Page): Promise<void> {
-  // Setting this once per process was not enough: another CDP client attaching resets it browser-wide, and Chrome
-  // quietly goes back to ~/Downloads. Every file we "could not download" tonight was sitting there the whole time,
-  // so this is re-asserted before every single download rather than cached behind a flag.
-  mkdirSync(DOWNLOAD_DIR, { recursive: true });
+  const dir = downloadDir();
+  mkdirSync(dir, { recursive: true });
   const cdp = await page.context().newCDPSession(page);
-  await cdp.send("Browser.setDownloadBehavior", { behavior: "allowAndName", downloadPath: DOWNLOAD_DIR, eventsEnabled: true }).catch(() => {});
-  downloadsReady = true;
+  await cdp.send("Browser.setDownloadBehavior", { behavior: "allowAndName", downloadPath: dir, eventsEnabled: true }).catch(() => {});
 }
 
 // Chrome's own Downloads folder, where files land whenever the override above has been reset out from under us.
@@ -591,7 +632,7 @@ const SYSTEM_DOWNLOADS = join(homedir(), "Downloads");
 // Everything already sitting in either folder, so a new arrival can be told apart from what was there before.
 function downloadsNow(): Set<string> {
   const seen = new Set<string>();
-  for (const dir of [DOWNLOAD_DIR, SYSTEM_DOWNLOADS]) if (existsSync(dir)) for (const f of readdirSync(dir)) seen.add(`${dir}/${f}`);
+  for (const dir of [downloadDir(), SYSTEM_DOWNLOADS]) if (existsSync(dir)) for (const f of readdirSync(dir)) seen.add(`${dir}/${f}`);
   return seen;
 }
 
@@ -605,7 +646,7 @@ async function waitForDownloadedFile(page: Page, before: Set<string>, timeoutMs:
     await pause(page, 250);
     // Both places: ours, and Chrome's own folder for when the override has been reset behind our back.
     const candidates: string[] = [];
-    for (const dir of [DOWNLOAD_DIR, SYSTEM_DOWNLOADS]) {
+    for (const dir of [downloadDir(), SYSTEM_DOWNLOADS]) {
       if (!existsSync(dir)) continue;
       for (const f of readdirSync(dir)) {
         if (before.has(`${dir}/${f}`) || f.endsWith(".crdownload") || f.startsWith(".")) continue;
@@ -951,23 +992,20 @@ async function collectAndDownloadOnce(page: Page, job: Job | undefined, name: st
   return saved;
 }
 
-const MANIFESTS = join(HOME_DIR, "collections");
-const manifestFile = (name: string) => join(MANIFESTS, `${name.replace(/[^\w.-]+/g, "_")}.json`);
+const manifestFile = (name: string) => join(getActiveAccountPaths().collectionsDir, `${name.replace(/[^\w.-]+/g, "_")}.json`);
 
 function writeManifest(name: string, wanted: { id: string; stem: string }[]): void {
-  mkdirSync(MANIFESTS, { recursive: true });
-  const old = existsSync(manifestFile(name)) ? (JSON.parse(readFileSync(manifestFile(name), "utf8")) as { id: string; stem: string }[]) : [];
+  const target = manifestFile(name);
+  const old = existsSync(target) ? (JSON.parse(readFileSync(target, "utf8")) as { id: string; stem: string }[]) : [];
   const merged = [...old.filter((o) => !wanted.some((w) => w.id === o.id)), ...wanted];
-  writeFileSync(manifestFile(name), JSON.stringify(merged, null, 1));
+  writeFileAtomic(target, JSON.stringify(merged, null, 1), 0o600, true);
 }
 
 // The whole collection in one ZIP. A collection made by an image batch is saved under the batch's scene names (its
 // manifest says which image is which scene) in the batch's own folder; any other collection keeps Flow's titles in
 // `dir`.
 export async function downloadCollection(name: string, dir: string): Promise<string[]> {
-  const state = await getFlowState();
-  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
-  const page = await getFlowPage();
+  const page = await requireFlowProject();
   await openCollection(page, name);
   await page.goto(inEnglish(page.url()), { waitUntil: "domcontentloaded" });
   await pause(page, 3000);
@@ -1005,7 +1043,7 @@ async function renameTile(page: Page, tile: Locator, title: string): Promise<boo
   }
 }
 
-async function downloadTile(page: Page, target: Locator | TileResolver, targetStem: string, quality: DownloadQuality): Promise<string[]> {
+export async function downloadTile(page: Page, target: Locator | TileResolver, targetStem: string, quality: DownloadQuality): Promise<string[]> {
   await useOwnDownloadDir(page);
   const resolve: TileResolver = typeof target === "function" ? target : async () => target;
   let lastError: unknown;
@@ -1116,9 +1154,9 @@ async function showAllMedia(page: Page, thorough = false): Promise<void> {
   await clearBackdrops(page);
 }
 
-async function ensureProjectGrid(page: Page): Promise<void> {
+export async function ensureProjectGrid(page: Page): Promise<void> {
   await dismissOverlays(page);
-  const root = page.url().match(/^https:\/\/[^/]+\/project\/[0-9a-f-]{36}/)?.[0];
+  const root = page.url().match(/^https?:\/\/.*?\/project\/[0-9a-f-]{36}/)?.[0];
   // Compared by path: an address ending in ?hl=en is already the grid.
   if (root && new URL(page.url()).pathname !== new URL(root).pathname) {
     await page.goto(inEnglish(root), { waitUntil: "domcontentloaded" });
@@ -1131,9 +1169,7 @@ async function ensureProjectGrid(page: Page): Promise<void> {
 
 // Drives one generation in the Flow tab and returns the downloaded file paths.
 export async function runGeneration(job: Job): Promise<string[]> {
-  const state = await getFlowState();
-  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
-  const page = await getFlowPage();
+  const page = await requireFlowProject();
   const s = job.params;
 
   await ensureProjectGrid(page);
@@ -1143,11 +1179,12 @@ export async function runGeneration(job: Job): Promise<string[]> {
   if (await clear.isVisible().catch(() => false)) await clear.click();
 
   job.credits = await applySettings(page, job);
-  if (job.credits > s.max_credits) {
-    throw new Error(
-      `Flow quotes ${job.credits} credits for this scene, above max_credits=${s.max_credits}. Nothing was generated. Raise max_credits or pick a cheaper model/duration/variants.`,
-    );
-  }
+  await evaluatePreSubmitCredits({
+    cost: job.credits,
+    maxCredits: s.max_credits,
+    readBalance: () => readCredits(page).catch(() => undefined),
+    hasInsufficientUi: () => hasInsufficientCreditsUi(page),
+  });
 
   if (s.first_frame) {
     await attachAsset(page, page.getByRole("button", { name: "Start", exact: true }), await uploadAsset(page, job, s.first_frame, "start"));
@@ -1176,7 +1213,17 @@ export async function runGeneration(job: Job): Promise<string[]> {
 
   await typePrompt(page, s.prompt);
   const start = page.getByRole("button", { name: "Start generation" });
-  if (!(await start.isEnabled())) throw new Error("Flow's Start generation button is disabled; the prompt or inputs were not accepted.");
+  if (!(await start.isEnabled())) {
+    if (await hasInsufficientCreditsUi(page)) {
+      const creditsRemaining = await readCredits(page).catch(() => undefined);
+      throw new CreditExhaustedError({
+        requiredCost: job.credits,
+        creditsRemaining,
+        reason: "Flow disabled Start generation due to insufficient credits.",
+      });
+    }
+    throw new Error("Flow's Start generation button is disabled; the prompt or inputs were not accepted.");
+  }
   await scrollToTop(page);
   const before = await mediaIds(page);
   await start.click();
@@ -1215,7 +1262,7 @@ export interface FlowAsset {
 
 // Walks the virtualised grid from the top and collects every tile it passes. Recycled tiles sometimes have no
 // media id yet, so entries are keyed by title and the id is filled in from whichever pass saw it.
-async function scanGrid(page: Page, stopAt?: (assets: FlowAsset[]) => boolean): Promise<FlowAsset[]> {
+export async function scanGrid(page: Page, stopAt?: (assets: FlowAsset[]) => boolean): Promise<FlowAsset[]> {
   await dismissOverlays(page);
   await showAllMedia(page);
   await pause(page, 600);
@@ -1259,9 +1306,7 @@ async function scanGrid(page: Page, stopAt?: (assets: FlowAsset[]) => boolean): 
 // Characters live in their own left-nav section. With none yet, Flow shows a template chooser instead, so only
 // entries that actually carry a character thumbnail count.
 export async function listCharacters(): Promise<string[]> {
-  const state = await getFlowState();
-  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
-  const page = await getFlowPage();
+  const page = await requireFlowProject();
   await dismissOverlays(page);
   await openProjectNav(page, "Characters");
   await pause(page, 2500);
@@ -1291,7 +1336,7 @@ async function leaveCharacterEditor(page: Page): Promise<void> {
 // download through the same watched folders as every other file.
 async function savePortrait(page: Page, name: string): Promise<string> {
   await useOwnDownloadDir(page);
-  const dir = join(process.env.FLOW_MCP_OUTPUT ?? join(homedir(), "flow-mcp-out"), "_cast");
+  const dir = getActiveAccountPaths().castDir;
   mkdirSync(dir, { recursive: true });
   const picture = page.getByRole("img", { name: "Generated character image" }).first();
   const button = page.getByRole("button", { name: "Download image", exact: true });
@@ -1315,9 +1360,7 @@ async function savePortrait(page: Page, name: string): Promise<string> {
 // Without a change it only saves the character's current portrait: for a look changed by hand in Flow, or an edit whose
 // portrait never reached disk.
 export async function editCharacter(name: string, change?: string, job?: Job): Promise<{ name: string; portrait?: string; note?: string }> {
-  const state = await getFlowState();
-  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
-  const page = await getFlowPage();
+  const page = await requireFlowProject();
   await leaveCharacterEditor(page);
   await dismissOverlays(page);
   await openProjectNav(page, "Characters");
@@ -1376,9 +1419,7 @@ export async function editCharacter(name: string, change?: string, job?: Job): P
 }
 
 export async function listAssets(): Promise<FlowAsset[]> {
-  const state = await getFlowState();
-  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
-  const page = await getFlowPage();
+  const page = await requireFlowProject();
   // From a scene, clip or character view the grid is not on screen, and the scan found nothing at all (2026-10-12:
   // a scene open in Flow listed as "no scenes"). Go back to the project's All media first.
   await ensureProjectGrid(page);
@@ -1389,9 +1430,7 @@ export async function listAssets(): Promise<FlowAsset[]> {
 
 // Downloads media that already exists in the project, matched by (the start of) its title.
 export async function downloadAsset(name: string, targetStem: string, quality: DownloadQuality): Promise<string[]> {
-  const state = await getFlowState();
-  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
-  const page = await getFlowPage();
+  const page = await requireFlowProject();
   await ensureProjectGrid(page);
   const matches = (a: FlowAsset) => a.name.toLowerCase().startsWith(name.toLowerCase());
   const found = (await scanGrid(page, (assets) => assets.some(matches))).find(matches);
@@ -1437,9 +1476,7 @@ async function countTitled(page: Page, name: string): Promise<number> {
 }
 
 export async function trashAsset(name: string): Promise<{ trashed: string }> {
-  const state = await getFlowState();
-  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
-  const page = await getFlowPage();
+  const page = await requireFlowProject();
   await ensureProjectGrid(page);
   const same = (await scanGrid(page)).filter((a) => a.name === name);
   if (!same.length) throw new Error(`Nothing in the open project is called "${name}".`);
@@ -1494,10 +1531,9 @@ export interface CharacterParams {
 // Afterwards it can be attached to any scene as reference "asset:<character name>".
 // What each character looks like, so scenes can hold Flow to the same design instead of letting it redraw.
 // Kept on disk so a restarted server still knows the cast.
-const LOOKS_FILE = join(HOME_DIR, "characters.json");
 const loadLooks = (): Record<string, string> => {
   try {
-    return JSON.parse(readFileSync(LOOKS_FILE, "utf8")) as Record<string, string>;
+    return JSON.parse(readFileSync(getActiveAccountPaths().charactersFile, "utf8")) as Record<string, string>;
   } catch {
     return {};
   }
@@ -1507,26 +1543,23 @@ export function forgetCharacter(name: string): void {
   const all = loadLooks();
   if (!(name.toLowerCase() in all)) return;
   delete all[name.toLowerCase()];
-  writeFileSync(LOOKS_FILE, JSON.stringify(all, null, 2));
+  writeFileAtomic(getActiveAccountPaths().charactersFile, JSON.stringify(all, null, 2), 0o600, true);
 }
 export function rememberCharacter(name: string, look: string): void {
   const all = { ...loadLooks(), [name.toLowerCase()]: look.trim() };
-  mkdirSync(HOME_DIR, { recursive: true });
-  writeFileSync(LOOKS_FILE, JSON.stringify(all, null, 2));
+  writeFileAtomic(getActiveAccountPaths().charactersFile, JSON.stringify(all, null, 2), 0o600, true);
 }
 
 export async function createCharacter(c: CharacterParams, job?: Job): Promise<{ name: string; url: string; portrait?: string }> {
-  const state = await getFlowState();
-  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
-  const page = await getFlowPage();
+  const page = await requireFlowProject();
   // A description generates the portrait first (free image), then the character is built from that picture.
   let portrait: string | undefined;
   if (!c.image) {
     if (!c.describe) throw new Error("Pass either an image or a description for the character.");
     if (job) job.progress = "drawing the character";
-    const dir = join(process.env.FLOW_MCP_OUTPUT ?? join(homedir(), "flow-mcp-out"), "_cast");
+    const dir = getActiveAccountPaths().castDir;
     const made = await runGeneration({
-      ...(job ?? ({ id: "char", status: "running", files: [], attempts: 1, createdAt: "" } as unknown as Job)),
+      ...(job ?? ({ id: "char", status: "running", portable: false, files: [], attempts: 1, createdAt: "" } as unknown as Job)),
       files: [],
       params: {
         prompt: c.describe,
@@ -1617,14 +1650,18 @@ const EDIT_TIMEOUT_MS = 10 * 60_000;
 // Video-to-video edit in Flow's edit view ("make it sunset", "remove the cup"). Flow shows no quote here, so the
 // cost is measured from the balance instead (a 4 s Omni clip cost 20 credits). The result is a new tile.
 export async function runEdit(job: Job): Promise<string[]> {
-  const state = await getFlowState();
-  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
-  const page = await getFlowPage();
+  const page = await requireFlowProject();
   const s = job.params;
   const title = s.edit_asset!;
 
   await ensureProjectGrid(page);
   const balance = await readCredits(page).catch(() => undefined);
+  if (balance === 0 || (await hasInsufficientCreditsUi(page))) {
+    throw new CreditExhaustedError({
+      creditsRemaining: balance,
+      reason: "Insufficient credits to run video edit.",
+    });
+  }
   // New tiles always appear at the top, so the "before" snapshot is taken there, ahead of the search: scrolling
   // back to the top after the scan would unmount the tile we are about to click (the grid is virtualised).
   const before = await mediaIds(page);
@@ -1646,7 +1683,16 @@ export async function runEdit(job: Job): Promise<string[]> {
   await page.keyboard.type(prompt, { delay: 8 });
   await pause(page, 600);
   const start = page.getByRole("button", { name: "Start generation" });
-  if (!(await start.isEnabled())) throw new Error("Flow did not accept the edit prompt (Start generation stayed disabled).");
+  if (!(await start.isEnabled())) {
+    if (await hasInsufficientCreditsUi(page)) {
+      const creditsRemaining = await readCredits(page).catch(() => undefined);
+      throw new CreditExhaustedError({
+        creditsRemaining,
+        reason: "Flow disabled Start generation on edit due to insufficient credits.",
+      });
+    }
+    throw new Error("Flow did not accept the edit prompt (Start generation stayed disabled).");
+  }
   await start.click();
 
   // Progress shows as "NN% <prompt>" inside the edit view and disappears when the edit is ready.
@@ -1660,7 +1706,13 @@ export async function runEdit(job: Job): Promise<string[]> {
     if (pct) seenProgress = true;
     else if (seenProgress) break;
     const failure = text.split("\n").find((l) => FAILURE_TEXT.test(l) && !l.includes(prompt));
-    if (!pct && failure && Date.now() > deadline - EDIT_TIMEOUT_MS + 15_000) throw new Error(`Flow reported a failed edit: ${failure.slice(0, 300)}`);
+    if (!pct && failure && Date.now() > deadline - EDIT_TIMEOUT_MS + 15_000) {
+      if (classifyTileFailure(failure) === "credit_exhausted") {
+        const creditsRemaining = await readCredits(page).catch(() => undefined);
+        throw new CreditExhaustedError({ creditsRemaining, reason: failure.slice(0, 300) });
+      }
+      throw new Error(`Flow reported a failed edit: ${failure.slice(0, 300)}`);
+    }
     if (Date.now() > deadline) throw new Error("Timed out waiting for Flow to finish the edit.");
   }
   job.progress = undefined;
@@ -1679,7 +1731,7 @@ export async function runEdit(job: Job): Promise<string[]> {
 // The agent session panel hides the composer, so a toggle attempted underneath it does nothing at all. Leaving agent
 // mode on then breaks the NEXT job, which expects the plain composer - a free character build failed that way. So this
 // confirms the toggle actually landed rather than assuming the click worked.
-async function setAgentMode(page: Page, on: boolean): Promise<void> {
+export async function setAgentMode(page: Page, on: boolean): Promise<void> {
   const agent = agentToggle(page);
   // Playwright says why a click did not land ("<div ...> intercepts pointer events", "element is not visible"); keep
   // that, so a failure names what was in the way instead of guessing.
@@ -1700,7 +1752,7 @@ async function setAgentMode(page: Page, on: boolean): Promise<void> {
 }
 
 // "Never" lets the agent generate without asking; it is switched back to "Always" as soon as the batch ends.
-async function setAgentSettings(page: Page, confirm: "Always" | "Never", imageAspect?: string): Promise<void> {
+export async function setAgentSettings(page: Page, confirm: "Always" | "Never", imageAspect?: string): Promise<void> {
   // Scoped to the prompt box: Flow added a second "Settings" button to the top bar ("View settings", seen 2026-10-13),
   // and an unscoped lookup matched both and failed every agent batch.
   // Renamed "Settings" -> "Agent settings" on 2026-11-21; either name works.
@@ -1733,7 +1785,7 @@ async function setAgentSettings(page: Page, confirm: "Always" | "Never", imageAs
 }
 
 // "Reuse prompt" on an agent-made tile opens the agent's session panel, which hides the normal composer.
-async function closeAgentSession(page: Page): Promise<void> {
+export async function closeAgentSession(page: Page): Promise<void> {
   const panel = page.getByRole("button", { name: "Start new session" });
   if (await panel.isVisible().catch(() => false)) {
     await page.getByRole("button", { name: "Close", exact: true }).click();
@@ -1749,66 +1801,12 @@ async function closeAgentSession(page: Page): Promise<void> {
   await pause(page, 400);
 }
 
-const STOP_WORDS = new Set("the and with from into over under that this then than are was for her his its their onto next near across wide shot close scene image".split(" "));
-const words = (text: string) => new Set(text.toLowerCase().match(/[a-z0-9']{3,}/g)?.filter((w) => !STOP_WORDS.has(w)) ?? []);
-
-// Returns, per scene, the indexes of the tiles that belong to it (best match first). A tile counts when at least
-// half of the scene's meaningful words appear in the prompt Flow stored for that tile.
-export function matchScenes(scenes: string[], prompts: string[]): number[][] {
-  // Words that most scenes share (a long common style paragraph) say nothing about WHICH scene a picture is, and they
-  // drowned the distinctive ones: 8 scenes sharing one style text matched 1 of 7 pictures (2026-11-07). Match on what
-  // is particular to each scene.
-  const all = scenes.map(words);
-  const count = new Map<string, number>();
-  for (const ws of all) for (const w of ws) count.set(w, (count.get(w) ?? 0) + 1);
-  const common = (w: string) => scenes.length > 2 && (count.get(w) ?? 0) >= Math.max(2, Math.ceil(scenes.length * 0.6));
-  const sceneWords = all.map((ws) => {
-    const own = new Set([...ws].filter((w) => !common(w)));
-    return own.size >= 3 ? own : ws;
-  });
-  const pairs: { scene: number; tile: number; score: number }[] = [];
-  prompts.forEach((prompt, tile) => {
-    const have = words(prompt);
-    sceneWords.forEach((want, scene) => {
-      const hit = [...want].filter((w) => have.has(w)).length;
-      pairs.push({ scene, tile, score: want.size ? hit / want.size : 0 });
-    });
-  });
-  pairs.sort((x, y) => y.score - x.score);
-  const out: number[][] = scenes.map(() => []);
-  const usedTiles = new Set<number>();
-  // First give every scene its single best tile, then hand leftover tiles to their best scene as extra takes.
-  for (const firstPass of [true, false]) {
-    for (const { scene, tile, score } of pairs) {
-      // a third of a scene's own words is plenty once the shared boilerplate is gone (the agent paraphrases)
-      if (score < 0.3 || usedTiles.has(tile) || (firstPass && out[scene].length)) continue;
-      out[scene].push(tile);
-      usedTiles.add(tile);
-    }
-  }
-  return out;
-}
-
-interface RoundOutcome {
-  produced: number;
-  timedOut: boolean;
-  failedTiles: number;
-  // What the agent wrote back, when it drew nothing (it answers in text instead of generating).
-  reply?: string;
-}
-
-// Scenes per request to Flow's agent. 17 and 20 worked; 30 and 39 came back with nothing drawn (2026-11-07).
-const AGENT_CHUNK = 20;
-
-// One pass through Flow's agent for the given scene numbers: ask, wait, match the new tiles back to those scenes
-// and download them. Returns how many scenes it actually delivered.
-// Bulk downloads go at an even, human pace: as quick as the steps allow (about 2.5 s), then held to a random 4-4.4 s each
-// (the user's call, 2026-10-19), in the spirit of the random pauses between generations. Before, each took ~5.6 s.
-const downloadPace = () => 4000 + Math.random() * 400;
+// Bulk downloads go at an even, human pace: as quick as the steps allow (about 2.5 s), then held to a random 4-4.4 s each.
+export const downloadPace = () => 4000 + Math.random() * 400;
 
 // Progress the panel and flow_wait show; with FLOW_MCP_DEBUG set, also a timed line on stderr to find slow steps.
 const t0s = new WeakMap<Job, number>();
-function step(job: Job, text: string | undefined): void {
+export function step(job: Job, text: string | undefined): void {
   job.progress = text;
   if (!process.env.FLOW_MCP_DEBUG || !text) return;
   if (!t0s.has(job)) t0s.set(job, Date.now());
@@ -1816,171 +1814,19 @@ function step(job: Job, text: string | undefined): void {
 }
 
 // One collection per batch, named after its folder and job, so a rerun never mixes with an older set.
-const collectionFor = (job: Job) => `${basename(job.params.output_dir)}-${job.id}`;
+export const collectionFor = (job: Job) => `${basename(job.params.output_dir)}-${job.id}`;
 
-async function agentRound(
-  page: Page,
-  job: Job,
-  scenes: string[],
-  indexes: number[],
-  retry: boolean,
-  files: string[],
-  done: Set<number>,
-): Promise<RoundOutcome> {
-  const s = job.params;
-  const aspect = s.aspect_ratio ?? "16:9";
-  const base = Number(s.file_stem.match(/\d+/)?.[0] ?? 1);
-  const numberOf = (i: number) => s.agent_numbers?.[i] ?? base + i;
-  await ensureProjectGrid(page);
-  const seenBefore = await scanGrid(page);
-  // Ids are unique per generation; titles are not (the agent reuses wording), so only id-less tiles fall back to a name.
-  const before = new Set<string>(seenBefore.map((a) => a.id).filter((v): v is string => Boolean(v)));
-  const beforeNames = new Set<string>(seenBefore.filter((a) => !a.id).map((a) => a.name));
-  await scrollToTop(page);
-
-  const clear = page.getByRole("button", { name: "Clear prompt" });
-  if (await clear.isVisible().catch(() => false)) await clear.click();
-  // Reference images ride along as ingredient chips, attached the way the + button does, once per round (the composer
-  // is cleared between rounds). The script then names them, and each scene says which ones it uses.
-  const refs = s.agent_refs ?? [];
-  const assets = s.agent_ref_assets ?? [];
-  if (refs.length) {
-    for (const [k, name] of assets.entries()) {
-      step(job, `attaching reference ${k + 1} of ${assets.length}`);
-      await attachAsset(page, page.getByRole("button", { name: "Add ingredients to the prompt box" }), name);
-      await pause(page, 700);
-    }
-    const attached = await page.getByRole("button", { name: "Ingredient" }).count();
-    if (attached < assets.length) throw new Error(`Only ${attached} of ${assets.length} reference image(s) attached in the agent composer.`);
-  }
-  const usesOf = (i: number) => s.agent_scene_refs?.[i];
-  const script = indexes
-    .map((i) => {
-      const uses = usesOf(i);
-      const tag = !refs.length || !uses ? "" : uses.length ? ` (use references: ${uses.join(", ")})` : " (no reference)";
-      return `Scene ${numberOf(i)}${tag}: ${scenes[i].replace(/\s*\n+\s*/g, " ").trim()}`;
-    })
-    .join(" ");
-  const legend = refs.length
-    ? ` The ${refs.length} attached image(s) are references: ${refs.map((r, k) => `${assets[k] ?? `image ${k + 1}`} is ${r.name}`).join("; ")}. ` +
-      `Whenever a scene shows one of them, keep it exactly as it looks in its reference (face, hair, clothing, shape, colours), ` +
-      `but stage each scene as its own description says; the references are for likeness only, never copy their pose or background.`
-    : "";
-  const lead = retry
-    ? `${indexes.length} image(s) from the last batch failed to generate. Generate them again now, one image per scene`
-    : `Generate exactly ${indexes.length} separate images, one image per scene, in scene order`;
-  const ask = `${lead}. Images only, never video. ${aspect} aspect ratio. Do not ask questions, generate them now.${legend} ${script}`;
-  await page.locator(".ProseMirror").first().click();
-  await page.keyboard.insertText(ask);
-  await pause(page, 800);
-  const start = page.getByRole("button", { name: "Start generation" });
-  if (!(await start.isEnabled())) throw new Error("Flow's agent did not accept the script (Start generation stayed disabled).");
-  const textBefore = new Set((await page.locator("body").innerText().catch(() => "")).split("\n").map((l) => l.trim()));
-  await start.click();
-
-  // The agent shows a Stop button while it works and "NN%" on every tile it is rendering.
-  const deadline = Date.now() + (3 * 60_000 + indexes.length * 30_000);
-  const stop = page.getByRole("button", { name: "Stop", exact: true });
-  let idleSince = 0;
-  let timedOut = false;
-  for (;;) {
-    await pause(page, 3000);
-    const main = await page.locator("main").first().innerText();
-    const pending = main.match(/\d+%/g) ?? [];
-    const working = pending.length > 0 || (await stop.isVisible().catch(() => false));
-    step(job, working ? (pending.length ? `${pending.length} rendering` : "the agent is working") : "the agent has finished");
-    if (working) idleSince = 0;
-    else if (!idleSince) idleSince = Date.now();
-    else if (Date.now() - idleSince > 8000) break;
-    if (Date.now() > deadline) {
-      // A tile that hangs must not sink the batch: stop the agent and keep whatever finished.
-      timedOut = true;
-      if (await stop.isVisible().catch(() => false)) await stop.click().catch(() => {});
-      await pause(page, 2000);
-      break;
-    }
-  }
-
-  step(job, "checking for failed tiles");
-  const failedTiles = await retryNewErrorTiles(page, before, true)
-    .then((r) => r.errors)
-    .catch(() => 0);
-  const fresh = (await scanGrid(page)).filter((t) => t.id && !before.has(t.id) && !beforeNames.has(t.name) && t.kind === "image");
-  if (!fresh.length) {
-    // Nothing drawn: keep what the agent wrote instead, so the reason reaches the user rather than a silent retry.
-    const reply = (await page.locator("body").innerText().catch(() => ""))
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 25 && !textBefore.has(l) && !/^\d+%/.test(l) && !l.startsWith("Generate exactly") && !l.includes("Scene 1"))
-      .join(" ")
-      .slice(0, 600);
-    await closeAgentSession(page);
-    return { produced: 0, timedOut, failedTiles, reply: reply || undefined };
-  }
-
-  // Tiles finish in any order and the agent rewords prompts, so each image is matched back to its scene by the
-  // prompt Flow stored for it ("Reuse prompt" puts that text in the composer).
-  const prompts: string[] = [];
-  for (const [k, tile] of fresh.entries()) {
-    step(job, `matching image ${k + 1} of ${fresh.length} to its scene`);
-    await scanGrid(page, (seen) => seen.some((x) => x.id === tile.id));
-    const el = mediaTile(page, tile.id!);
-    await el.scrollIntoViewIfNeeded();
-    await el.hover();
-    await el.getByRole("button", { name: "Reuse prompt" }).click();
-    await pause(page, 900);
-    prompts.push(await page.locator(".ProseMirror").first().innerText());
-  }
-  await closeAgentSession(page);
-
-  const assigned = matchScenes(
-    indexes.map((i) => scenes[i]),
-    prompts,
-  );
-  const drop = Number(process.env.FLOW_MCP_SIMULATE_MISSING ?? 0); // test hook: pretend this scene number failed
-  mkdirSync(s.output_dir, { recursive: true });
-  const wanted: { scene: number; id: string; stem: string }[] = [];
-  for (const [n, tileIndexes] of assigned.entries()) {
-    const sceneIndex = indexes[n];
-    if (!tileIndexes.length || (numberOf(sceneIndex) === drop && !s.agent_numbers)) continue;
-    for (const [v, tileIndex] of tileIndexes.entries())
-      wanted.push({ scene: sceneIndex, id: fresh[tileIndex].id!, stem: join(s.output_dir, `scene-${String(numberOf(sceneIndex)).padStart(2, "0")}${v ? `-v${v + 1}` : ""}`) });
-  }
-  let produced = 0;
-  if ((s.download_quality ?? "original") === "original" && wanted.length) {
-    // The user's way (2026-11-07): gather the whole batch into one collection and fetch it as ONE ZIP, instead of a
-    // tile menu per image (4.2 s each). Originals only; an upscaled batch still goes tile by tile.
-    const saved = await collectAndDownload(page, job, collectionFor(job), wanted);
-    files.push(...saved.values());
-  } else {
-    for (const w of wanted) {
-      const started = Date.now();
-      // New tiles sit at the top of the grid, so a scan is only needed when this one has scrolled out of the page.
-      if (!(await mediaTile(page, w.id).count())) await scanGrid(page, (seen) => seen.some((x) => x.id === w.id));
-      step(job, `downloading scene ${numberOf(w.scene)}`);
-      files.push(...(await downloadTile(page, mediaTile(page, w.id), w.stem, s.download_quality ?? "original")));
-      await pause(page, Math.max(0, downloadPace() - (Date.now() - started)));
-    }
-  }
-  for (const scene of new Set(wanted.map((w) => w.scene))) {
-    done.add(scene);
-    produced++;
-  }
-  return { produced, timedOut, failedTiles };
-}
-
-// Hands a whole multi-scene script to Flow's own agent, which generates every image in parallel (seconds instead
-// of one paced job per scene). Scenes the agent drops are asked for again, then re-run one by one as a last resort.
 // Continues a clip from its own last frame WITH characters still attached - the combination the composer refuses.
-// Flow's composer offers Frames OR Ingredients, never both, but agent mode does both, and this is the route the user
-// demonstrated: save the clip's last frame, Animate that image (which switches Flow into agent mode by itself), then
-// add the avatar or character as a second chip. Verified step by step against the live UI on 2026-09-20.
 export async function runContinue(job: Job): Promise<string[]> {
-  const state = await getFlowState();
-  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
-  const page = await getFlowPage();
+  const page = await requireFlowProject();
   const s = job.params;
   const balance = await readCredits(page).catch(() => undefined);
+  if (balance === 0 || (await hasInsufficientCreditsUi(page))) {
+    throw new CreditExhaustedError({
+      creditsRemaining: balance,
+      reason: "Insufficient credits to continue video clip.",
+    });
+  }
 
   await ensureProjectGrid(page);
   const wanted = s.continue_from!.toLowerCase();
@@ -2026,14 +1872,8 @@ export async function runContinue(job: Job): Promise<string[]> {
 
     // 4. Agent mode asks for confirmation unless told not to, which would stall an unattended run.
     await setAgentSettings(page, "Never", s.aspect_ratio ?? "16:9");
-    // Agent mode treats both chips as ingredients and decides what to do with them. Attaching the saved frame is not
-    // enough - without being told, the agent reads it as a style reference and stages a fresh shot. It has to be told
-    // in words that the frame IS the opening frame. (Cost 15 credits to learn on 2026-09-20.)
     const cast = (s.attach ?? []).join(" and ");
     const exact = s.continue_mode !== "likeness";
-    // Naming the tool settles it in one go. Flow offers first-frame animation (I2V), which continues an image exactly
-    // but ignores other references, or reference-to-video (R2V), which honours a character but only approximates the
-    // frame. Left unsaid, the agent stops mid-run and asks - which stalls an unattended job.
     await typePrompt(
       page,
       (exact
@@ -2046,7 +1886,18 @@ export async function runContinue(job: Job): Promise<string[]> {
     );
     const before = await mediaIds(page);
     job.progress = "generating";
-    await page.getByRole("button", { name: "Start generation" }).click();
+    const start = page.getByRole("button", { name: "Start generation" });
+    if (!(await start.isEnabled())) {
+      if (await hasInsufficientCreditsUi(page)) {
+        const creditsRemaining = await readCredits(page).catch(() => undefined);
+        throw new CreditExhaustedError({
+          creditsRemaining,
+          reason: "Flow disabled Start generation on continue due to insufficient credits.",
+        });
+      }
+      throw new Error("Flow did not accept the continue prompt (Start generation stayed disabled).");
+    }
+    await start.click();
 
     // The agent sometimes still stops to ask which tool to use. Nobody is watching an unattended run, so answer it.
     for (let i = 0; i < 12; i++) {
@@ -2087,179 +1938,19 @@ export async function runContinue(job: Job): Promise<string[]> {
   }
 }
 
-export async function runAgentBatch(job: Job): Promise<string[]> {
-  const state = await getFlowState();
-  if (!state.signedIn || !state.inProject) throw new Error(state.hint);
-  const page = await getFlowPage();
-  const s = job.params;
-  const scenes = s.agent_scenes!;
-
-  await ensureProjectGrid(page);
-  const balance = await readCredits(page).catch(() => undefined);
-
-  const files: string[] = [];
-  const done = new Set<number>();
-  const firstNumber = Number(s.file_stem.match(/\d+/)?.[0] ?? 1);
-  const numberOf = (i: number) => s.agent_numbers?.[i] ?? firstNumber + i;
-  let agentTimedOut = false;
-  let failedTiles = 0;
-  let agentRetries = 0;
-  let agentProblem = "";
-  let collectionProblem = "";
-  try {
-    // References are uploaded once with readable names (the agent sees them), before Agent mode hides the upload menu.
-    if (s.agent_refs?.length && !s.agent_ref_assets?.length) {
-      await setAgentMode(page, false);
-      const assets: string[] = [];
-      for (const [k, r] of s.agent_refs.entries()) {
-        step(job, `uploading reference ${k + 1} of ${s.agent_refs.length} (${r.name})`);
-        const label = r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || `ref${k + 1}`;
-        assets.push(await uploadAsset(page, job, r.image, label));
-      }
-      s.agent_ref_assets = assets;
-    }
-    step(job, "switching Agent mode on");
-    await setAgentMode(page, true);
-    step(job, "setting the agent to generate without asking");
-    await setAgentSettings(page, "Never", s.aspect_ratio ?? "16:9");
-    rounds: for (let round = 0; round < 3; round++) {
-      const todo = scenes.map((_, i) => i).filter((i) => !done.has(i));
-      if (!todo.length) break;
-      if (round) {
-        agentRetries += todo.length;
-        job.progress = `asking the agent again for ${todo.length} scene(s)`;
-      }
-      for (let c = 0; c < todo.length; c += AGENT_CHUNK) {
-        const chunk = todo.slice(c, c + AGENT_CHUNK);
-        if (todo.length > AGENT_CHUNK) step(job, `asking the agent for scenes ${numberOf(chunk[0])}-${numberOf(chunk[chunk.length - 1])}`);
-        const out = await agentRound(page, job, scenes, chunk, round > 0, files, done);
-        agentTimedOut ||= out.timedOut;
-        failedTiles = out.failedTiles;
-        if (!out.produced) {
-          // The agent drew nothing for a whole request: stop asking it, and never quietly switch to one by one.
-          if (!done.size) agentProblem = `it drew nothing${out.reply ? `; it said: "${out.reply}"` : ""}.`;
-          break rounds;
-        }
-      }
-    }
-  } catch (err) {
-    // A download that stopped is NOT a reason to make the images again or to fetch them another way: they exist in
-    // Flow. Stop, and say where they are.
-    if (err instanceof CollectionError) collectionProblem = err.message;
-    // Agent mode could not be used (2026-10-13: "Could not switch Agent mode on" failed a whole 11-image batch with
-    // nothing made). Whatever the agent did not deliver is made one by one below instead: slower, but the batch still
-    // ends with every image.
-    else agentProblem = (err as Error).message;
-  } finally {
-    step(job, "putting the agent settings back");
-    await ensureProjectGrid(page).catch(() => {});
-    await closeAgentSession(page).catch(() => {});
-    await setAgentMode(page, true).catch(() => {});
-    await setAgentSettings(page, "Always").catch(() => {});
-    await setAgentMode(page, false).catch(() => {});
-  }
-
-  // Agent mode failing outright is NOT a reason to make the whole batch one image at a time (the user, 2026-11-07:
-  // "I always see you creating one by one"). Stop and say why; the one-by-one route is only for the few scenes a
-  // working agent dropped.
-  if (agentProblem && !done.size) {
-    throw new Error(`Flow's agent could not run this batch: ${agentProblem} Nothing was made one by one instead.`);
-  }
-  if (collectionProblem) {
-    throw new Error(
-      `${collectionProblem} The images are in Flow (collection "${collectionFor(job)}" if they were moved there): ` +
-        `flow_download with collection "${collectionFor(job)}" fetches them as one ZIP without generating anything. ` +
-        (files.length ? `Saved before it stopped: ${files.length} file(s) in ${s.output_dir}.` : "Nothing was saved yet."),
-    );
-  }
-
-  // Anything the agent still has not delivered is generated one by one, which is slower but exact.
-  const missing = scenes.map((_, i) => i).filter((i) => !done.has(i));
-  const failed: number[] = [];
-  const stillFails = Number(process.env.FLOW_MCP_SIMULATE_FAILED ?? 0); // test hook: pretend this scene failed for good
-  // A scene made one by one keeps its references: the uploaded copies when there are some, else the original files.
-  const refsFor = (i: number): string[] | undefined => {
-    const refs = s.agent_refs ?? [];
-    if (!refs.length) return undefined;
-    const uses = s.agent_scene_refs?.[i];
-    const picked = refs
-      .map((r, k) => ({ r, k }))
-      .filter(({ r }) => !uses || uses.some((u) => u.toLowerCase() === r.name.toLowerCase()))
-      .slice(0, 3);
-    return picked.length ? picked.map(({ r, k }) => (s.agent_ref_assets?.[k] ? `${ASSET_PREFIX}${s.agent_ref_assets[k]}` : r.image)) : undefined;
-  };
-  // One by one is only for the odd scene a working agent dropped. More than a few go back as "still failed", and
-  // Retry asks the agent again for just those, in bulk.
-  const MAX_ONE_BY_ONE = 3;
-  if (missing.length > MAX_ONE_BY_ONE) {
-    failed.push(...missing.map(numberOf));
-    missing.length = 0;
-  }
-  for (const [n, i] of missing.entries()) {
-    job.progress = `re-running scene ${numberOf(i)} one by one (${n + 1}/${missing.length})`;
-    if (numberOf(i) === stillFails && !job.params.agent_numbers) {
-      failed.push(numberOf(i));
-      continue;
-    }
-    const single: Job = {
-      ...job,
-      files: [],
-      params: {
-        prompt: scenes[i],
-        type: "image",
-        max_credits: 0,
-        reference_images: refsFor(i),
-        aspect_ratio: s.aspect_ratio,
-        download_quality: s.download_quality,
-        output_dir: s.output_dir,
-        file_stem: `scene-${String(numberOf(i)).padStart(2, "0")}`,
-      },
-    };
-    let ok = false;
-    for (let attempt = 0; attempt < 2 && !ok; attempt++) {
-      if (attempt || n) await pause(page, 8000);
-      try {
-        files.push(...(await runGeneration(single)));
-        ok = true;
-      } catch {
-        /* one more attempt, then give up on this scene */
-      }
-    }
-    if (!ok) failed.push(numberOf(i));
-  }
-  job.failed_scenes = failed.length ? failed : undefined;
-  step(job, "reading the credit balance");
-  const left = await readCredits(page).catch(() => undefined);
-  step(job, undefined);
-  files.sort();
-  job.note = [
-    // What still needs doing first: the panel shows only the start of a long note.
-    failed.length ? `still failed: scene ${failed.join(", ")} (use Retry)` : "",
-    agentProblem ? `agent mode failed (${agentProblem}), so the images were made one by one` : "",
-    agentTimedOut ? "the agent stalled and was stopped" : "",
-    `${done.size} of ${scenes.length} scenes came from the agent`,
-    s.agent_refs?.length ? `${s.agent_refs.length} reference image(s) attached` : "",
-    agentRetries ? `${agentRetries} asked again` : "",
-    failedTiles ? `${failedTiles} tile(s) failed in Flow` : "",
-    missing.length > failed.length ? `${missing.length - failed.length} re-run one by one` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  if (!files.length) throw new Error("No image could be generated for any scene. Open the Flow tab to see what Flow reported.");
-
-  if (balance !== undefined && left !== undefined) job.credits = balance - left;
-  return files;
-}
-
 // A fresh Flow project, so a film can start from scratch without anyone clicking. Mapped live (2026-10-30): Flow's home
 // page has one button "New project", which opens /project/<uuid>; on the project page the name is a text box whose
 // accessible name is "Editable text" (it holds Flow's default name, e.g. "Oct 29 - 22:17").
 export async function createProject(title?: string): Promise<{ id: string; url: string; title: string }> {
+  const cfg = getConfig();
   const page = await getFlowPage();
-  await page.goto(inEnglish("https://flow.google.com/"), { waitUntil: "domcontentloaded" });
+  await page.goto(inEnglish(cfg.flowUrl), { waitUntil: "domcontentloaded" });
+  if (isSignInUrl(page.url(), cfg)) {
+    throw new AppError(503, ERROR_CODES.AUTH_REQUIRED, t("error.AUTH_REQUIRED"));
+  }
   const button = page.getByRole("button", { name: /new project/i }).first();
   await button.waitFor({ state: "visible", timeout: 30_000 }).catch(() => {
-    throw new Error("Flow's home page shows no \"New project\" button. Check the Flow window is signed in.");
+    throw new AppError(503, ERROR_CODES.AUTH_REQUIRED, "Flow's home page shows no \"New project\" button. Check the Flow window is signed in.");
   });
   await button.click();
   await page.waitForURL(/\/project\/[0-9a-f-]{36}/, { timeout: 30_000 }).catch(() => {
@@ -2274,5 +1965,5 @@ export async function createProject(title?: string): Promise<{ id: string; url: 
     await page.waitForTimeout(1200);
   }
   const shown = (await name.inputValue().catch(() => "")) || title || "";
-  return { id, url: `https://flow.google.com/project/${id}`, title: shown };
+  return { id, url: `${new URL(page.url()).origin}/project/${id}`, title: shown };
 }
