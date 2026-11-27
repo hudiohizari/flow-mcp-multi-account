@@ -10,63 +10,76 @@
 <style>
 [hidden]{display:none!important}
 :root{
-  --ink:#14110e; --ink2:#1d1915; --ink3:#2a241e; --line:#3a322a;
+  --ink:#14110e; --ink2:#1d1915; --ink3:#2a241e; --line:#3a322a; --line-ui:#786959;
   --bone:#f3eadb; --dim:#b3a793; --tally:#ff5a1f; --go:#9fe06a; --warn:#ffc53d; --bad:#ff4d4d;
+  --scrim:rgba(20,17,14,.82); --shadow-elev:0 12px 32px rgba(0,0,0,.55);
+  --bg-surface:var(--ink2); --bg-recessed:var(--ink); --border-interactive:var(--line-ui);
+  --focus-ring:var(--tally); --fg-on-status:var(--ink);
+  --ease-out-expo:cubic-bezier(0.16,1,0.3,1); --dur-dialog:220ms;
+  --acc-pill-max-w:220px; --acc-hit-min:44px; --acc-gap:8px; --acc-switch-w:40px; --acc-switch-h:24px; --acc-slot-clear-pad:56px;
   --display:"Big Shoulders Display",Impact,sans-serif; --body:"Hanken Grotesk",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
   --r:12px;
 }
 *{box-sizing:border-box;margin:0}
-html{background:var(--ink);color:var(--bone);font:500 17px/1.4 var(--body);-webkit-text-size-adjust:100%}
-body{min-height:100vh;padding:0 16px 104px;background:
+html{color-scheme:dark;caret-color:var(--tally);background:var(--ink);color:var(--bone);font:500 17px/1.4 var(--body);-webkit-text-size-adjust:100%}
+::selection{background:var(--tally);color:var(--ink)}
+a{text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+body{min-height:100vh;overflow-x:clip;padding:0 16px max(104px,calc(var(--rollbar-h,108px) + 20px));background:
   radial-gradient(1200px 500px at 85% -10%,rgba(255,90,31,.16),transparent 60%),
   radial-gradient(900px 600px at -10% 30%,rgba(255,197,61,.06),transparent 60%),var(--ink)}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.07;z-index:50;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
-.wrap{max-width:1240px;margin:0 auto}
+.wrap{max-width:1240px;margin:0 auto;overflow-x:clip}
 .clapper{height:12px;margin:0 -16px;background:repeating-linear-gradient(-55deg,var(--bone) 0 22px,var(--ink) 22px 44px)}
 header{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;justify-content:space-between;padding:12px 0 10px}
 h1{font:900 clamp(34px,8.5vw,52px)/.9 var(--display);letter-spacing:.01em;text-transform:uppercase}
 h1 span{color:var(--tally)}
-.status{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font:700 15px var(--mono)}
-.pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border:2px solid var(--line);border-radius:99px;background:var(--ink2)}
-.tally{width:12px;height:12px;border-radius:50%;background:var(--dim)}
-.tally.ready{background:var(--go);box-shadow:0 0 14px var(--go)}
-.tally.rolling{background:var(--tally);box-shadow:0 0 16px var(--tally);animation:blink 1s steps(2) infinite}
+.status{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font:700 15px var(--mono);min-width:0;max-width:100%}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border:2px solid var(--line);border-radius:99px;background:var(--ink2);color:var(--bone);font:inherit;min-width:0;max-width:100%}
+.tabular{font-variant-numeric:tabular-nums}
+.tally{width:12px;height:12px;flex:none;border-radius:50%;background:var(--dim)}
+.tally.dim{background:var(--dim)}
+.tally.warn{background:var(--warn)}
+.tally.ready{background:var(--go)}
+.tally.rolling{background:var(--tally);animation:blink 1s steps(2) infinite}
 .tally.down{background:var(--bad)}
 @keyframes blink{50%{opacity:.25}}
-.hint{margin-top:12px;padding:12px 14px;border-left:5px solid var(--warn);background:var(--ink2);border-radius:var(--r);font-size:17px}
-.cols{display:grid;gap:22px;margin-top:16px}
-@media(min-width:1040px){.cols{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);align-items:start}.side{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow-y:auto;overscroll-behavior:contain;padding-right:4px}}
-h2{font:800 30px/1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin:0 0 10px;display:flex;align-items:baseline;gap:10px}
+.hint{margin-top:12px;padding:12px 14px;border-left:5px solid var(--warn);background:var(--ink2);border-radius:var(--r);font-size:17px;min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.cols{display:grid;grid-template-columns:minmax(0,1fr);gap:22px;margin-top:16px}
+.cols>*,.panel,.side{min-width:0}
+@media(min-width:1040px){.cols{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);align-items:start}.side{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow-y:auto;overscroll-behavior:contain;padding-right:4px;padding-bottom:calc(var(--rollbar-h,108px) + 20px)}}
+h2{font:800 30px/1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin:0 0 10px;display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;min-width:0}
 h2 small{font:700 14px var(--mono);color:var(--dim);letter-spacing:0}
-section{margin-bottom:24px}
-.card{background:var(--ink2);border:2px solid var(--line);border-radius:var(--r);padding:14px;animation:rise .45s both}
+section{margin-bottom:24px;min-width:0}
+.card{background:var(--ink2);border:2px solid var(--line);border-radius:var(--r);padding:14px;min-width:0;animation:rise .45s both}
 @keyframes rise{from{opacity:0;transform:translateY(14px)}}
-label.f{display:block;font:700 13px var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin:12px 0 5px}
+label.f{display:block;font:700 13px var(--mono);color:var(--dim);letter-spacing:.04em;margin:12px 0 5px}
 label.f:first-child{margin-top:0}
-input[type=text],input[type=number],select,textarea{width:100%;font:500 17px var(--body);color:var(--bone);background:var(--ink);border:2px solid var(--line);border-radius:10px;padding:10px 12px;outline:none;-webkit-appearance:none;appearance:none}
+input[type=text],input[type=number],select,textarea{width:100%;min-width:0;max-width:100%;font:500 17px var(--body);color:var(--bone);background:var(--ink);border:2px solid var(--line);border-radius:10px;padding:10px 12px;outline:none;-webkit-appearance:none;appearance:none}
 select{background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);background-position:calc(100% - 20px) 50%,calc(100% - 13px) 50%;background-size:7px 7px;background-repeat:no-repeat;padding-right:38px}
 textarea{min-height:96px;resize:vertical;line-height:1.4}
 input:focus,select:focus,textarea:focus{border-color:var(--tally)}
-.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
 .seg button{flex:1 1 0;min-width:0;min-height:42px;padding:0 10px;font:700 16px var(--mono);color:var(--bone);background:var(--ink);border:2px solid var(--line);border-radius:10px;cursor:pointer}
 .seg button.on{background:var(--bone);color:var(--ink);border-color:var(--bone)}
 .seg button:disabled{opacity:.3;cursor:not-allowed}
-.grid2{display:grid;gap:0 12px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr);gap:0 12px}
+.grid2>*{min-width:0}
 .grid2 label.f:first-child{margin-top:12px}
-@media(min-width:620px){.grid2{grid-template-columns:1fr 1fr}}
+@media(min-width:620px){.grid2{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 .scene{position:relative;margin-bottom:12px;padding-top:12px}
 .scene .no{position:absolute;top:-2px;right:14px;font:900 60px/1 var(--display);color:var(--ink3);pointer-events:none;-webkit-text-stroke:2px var(--line)}
 .scene>label.f:first-of-type{padding-right:80px}
-.scene .bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
-.btn{min-height:46px;padding:0 16px;font:800 19px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--bone);background:var(--ink3);border:2px solid var(--line);border-radius:10px;cursor:pointer}
+.scene .bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;min-width:0}
+.btn{max-width:100%;min-height:46px;padding:0 16px;font:800 19px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--bone);background:var(--ink3);border:2px solid var(--line);border-radius:10px;cursor:pointer}
 .btn:hover{border-color:var(--bone)}
 .btn.ghost{background:transparent}
-.btn.small{min-height:40px;font-size:17px;padding:0 12px}
+.btn.small{min-height:40px;font-size:17px;padding:0 12px;text-transform:none;letter-spacing:.02em}
 .btn:disabled{opacity:.35;cursor:not-allowed}
-.phrase{margin-top:8px;padding:10px 12px;border-radius:10px;background:var(--ink);border:2px dashed var(--line);color:var(--dim);font-size:16px}
+.phrase{margin-top:8px;padding:10px 12px;border-radius:10px;background:var(--ink);border:2px dashed var(--line);color:var(--dim);font-size:16px;min-width:0;overflow-wrap:anywhere;word-break:break-word}
 .phrase b{color:var(--warn);font-weight:700}
-.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));gap:8px;min-width:0}
 .slot{position:relative;min-height:92px;border:2px dashed var(--line);border-radius:10px;background:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:8px;text-align:center;cursor:pointer;font:700 15px var(--mono);color:var(--dim);overflow:hidden}
 .slot:hover{border-color:var(--tally);color:var(--bone)}
 .slot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.75}
@@ -74,8 +87,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--tally)}
 .slot .two{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
 .slot .two button{min-height:38px;padding:0 10px;font:700 14px var(--mono);color:var(--bone);background:var(--ink3);border:2px solid var(--line);border-radius:10px;cursor:pointer}
 .slot .two button:hover{border-color:var(--tally)}
-.cliplist{display:flex;flex-direction:column;gap:6px}
-.take{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.cliplist{display:flex;flex-direction:column;gap:6px;min-width:0}
+.take{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);min-width:0}
 .take:last-child{border-bottom:0}
 .take b{font:700 15px var(--mono);color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .take small{display:block;font:600 13px var(--mono);color:var(--dim);margin-top:2px}
@@ -84,7 +97,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--tally)}
 .cliprow b{font:800 16px var(--mono);color:var(--tally);min-width:1.5em}
 .cliprow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 15px var(--mono);color:var(--bone)}
 .cliprow button{flex:none;width:34px;height:34px;border-radius:50%;border:0;background:var(--bad);color:#fff;font:800 20px var(--body);cursor:pointer}
-.slot .x{position:absolute;top:5px;right:5px;width:32px;height:32px;border-radius:50%;border:0;background:var(--bad);color:#fff;font:800 20px var(--body);cursor:pointer;z-index:2}
+.slot.is-populated{min-height:112px;justify-content:flex-end;padding:var(--acc-slot-clear-pad) 8px 10px}
+.slot.is-mismatch{border:1px solid var(--warn)}
+.slot .x{position:absolute;top:4px;right:4px;min-width:var(--acc-hit-min);min-height:var(--acc-hit-min);width:var(--acc-hit-min);height:var(--acc-hit-min);padding:0;border-radius:10px;border:1px solid var(--bad);background:var(--bad);color:var(--fg-on-status);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
+.slot .x:hover{border-color:var(--bone)}
+.acc-draft-slot-badge{position:relative;z-index:1;max-width:100%;padding:2px 8px;border:1px solid var(--warn);border-radius:99px;background:var(--ink2);color:var(--warn);font:700 12px/1.3 var(--mono);white-space:normal;overflow-wrap:anywhere}
 .check{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:17px;cursor:pointer}
 .check input{width:24px;height:24px;flex:none;accent-color:var(--tally)}
 .add{width:100%;min-height:50px;border-style:dashed;font-size:21px}
@@ -92,23 +109,24 @@ input:focus,select:focus,textarea:focus{border-color:var(--tally)}
 .rollbar .in{max-width:1240px;margin:0 auto;display:flex;gap:12px;align-items:center}
 .est{flex:1;min-width:0;font:700 15px var(--mono);color:var(--dim)}
 .est b{display:block;font:900 28px/1 var(--display);color:var(--bone);letter-spacing:.03em}
-.roll{min-height:56px;padding:0 30px;font:900 30px var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink);background:var(--tally);border:0;border-radius:12px;cursor:pointer;box-shadow:0 8px 30px rgba(255,90,31,.35)}
+.roll{min-height:56px;padding:0 30px;font:900 30px var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink);background:var(--tally);border:0;border-radius:12px;cursor:pointer;box-shadow:var(--shadow-elev)}
 .roll:active{transform:translateY(2px)}
 .roll:disabled{background:var(--ink3);color:var(--dim);box-shadow:none;cursor:not-allowed}
-.job{display:grid;gap:8px;padding:12px 0;border-top:2px solid var(--line)}
+.job{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:12px 0;border-top:2px solid var(--line);min-width:0}
 .job:first-child{border-top:0;padding-top:0}
-.job .top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.badge{font:700 14px var(--mono);text-transform:uppercase;letter-spacing:.06em;padding:4px 10px;border-radius:8px;background:var(--ink3)}
+.job .top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-width:0}
+.badge{font:700 14px var(--mono);text-transform:uppercase;letter-spacing:.06em;padding:4px 10px;border-radius:8px;background:var(--ink3);max-width:100%;overflow-wrap:anywhere}
 .badge.running{background:var(--tally);color:var(--ink)} .badge.done{background:var(--go);color:var(--ink)} .badge.failed{background:var(--bad);color:#fff} .badge.cancelled{opacity:.5}
-.job .name{font:800 21px var(--display);letter-spacing:.04em;text-transform:uppercase}
-.job p{color:var(--dim);font-size:16px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.job .name{font:800 21px var(--display);letter-spacing:.04em;text-transform:uppercase;min-width:0;overflow-wrap:anywhere}
+.job p{color:var(--dim);font-size:16px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;word-break:break-word}
 .job .err{color:var(--bad);-webkit-line-clamp:4}
 .job video,.job img.out{width:100%;max-height:420px;object-fit:contain;border-radius:12px;background:#000}
 .meter{height:8px;border-radius:9px;background:var(--ink3);overflow:hidden}.meter i{display:block;height:100%;background:var(--tally);transition:width .6s}
-.pacing{font:700 15px var(--mono);color:var(--warn);margin-bottom:10px}
+.pacing{font:700 15px var(--mono);color:var(--warn);margin-bottom:10px;overflow-wrap:anywhere}
+.empty,#galInfo,.card p{overflow-wrap:anywhere;word-break:break-word}
 .empty{color:var(--dim);font-size:16px}
-.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:10px}
-.gal figure{margin:0;border-radius:10px;overflow:hidden;background:#000;border:2px solid var(--line);cursor:pointer}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(130px,100%),1fr));gap:8px;margin-top:10px;min-width:0}
+.gal figure{margin:0;border-radius:10px;overflow:hidden;background:#000;border:2px solid var(--line);cursor:pointer;min-width:0}
 .gal figure:hover{border-color:var(--tally)}
 .gal video,.gal img{display:block;width:100%;aspect-ratio:1;object-fit:cover}
 .gal figcaption{padding:6px 8px;font:700 13px var(--mono);color:var(--bone);background:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -119,13 +137,135 @@ input:focus,select:focus,textarea:focus{border-color:var(--tally)}
 #viewerBody{height:min(calc(96vh - 150px),720px);height:min(calc(96dvh - 150px),720px);border-radius:10px;background:#000;overflow:hidden}
 #viewer video,#viewer img{display:block;width:100%;height:100%;object-fit:contain}
 #viewerPath{margin-top:8px;font-size:14px;word-break:break-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.lib{display:grid;gap:6px;max-height:420px;overflow:auto;margin-top:10px}
-.lib button{display:flex;gap:10px;align-items:center;justify-content:space-between;text-align:left;min-height:44px;padding:8px 12px;font:500 17px var(--body);color:var(--bone);background:var(--ink);border:2px solid var(--line);border-radius:10px;cursor:pointer}
+.lib{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;max-height:420px;overflow:auto;margin-top:10px;min-width:0}
+.lib button{display:flex;gap:10px;align-items:center;justify-content:space-between;text-align:left;min-height:44px;min-width:0;max-width:100%;padding:8px 12px;font:500 17px var(--body);color:var(--bone);background:var(--ink);border:2px solid var(--line);border-radius:10px;cursor:pointer}
+.lib button span{min-width:0;overflow-wrap:anywhere}
 .lib button:hover{border-color:var(--tally)} .lib button.on{border-color:var(--go)}
 .lib em{font:700 14px var(--mono);font-style:normal;color:var(--dim);text-transform:uppercase}
-dialog{margin:auto;width:min(640px,calc(100vw - 24px));max-height:86vh;border:2px solid var(--line);border-radius:14px;background:var(--ink2);color:var(--bone);padding:16px}
-dialog::backdrop{background:rgba(0,0,0,.7)}
-.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:60;max-width:calc(100vw - 32px);padding:12px 18px;border-radius:10px;background:var(--bone);color:var(--ink);font-weight:700;font-size:17px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+dialog{margin:auto;width:min(640px,calc(100vw - 24px));max-height:86vh;border:1px solid var(--line-ui);border-radius:14px;background:var(--bg-surface);color:var(--bone);padding:16px}
+dialog:modal{overscroll-behavior:contain;box-shadow:var(--shadow-elev)}
+dialog::backdrop{background:var(--scrim);overflow:hidden;overscroll-behavior:contain}
+dialog,#accList{scrollbar-width:thin;scrollbar-color:var(--line-ui) var(--ink)}
+dialog::-webkit-scrollbar,#accList::-webkit-scrollbar{width:8px;height:8px}
+dialog::-webkit-scrollbar-track,#accList::-webkit-scrollbar-track{background:var(--ink)}
+dialog::-webkit-scrollbar-thumb,#accList::-webkit-scrollbar-thumb{background:var(--line-ui);border-radius:4px}
+@media(prefers-reduced-motion:no-preference){
+  dialog[open]{animation:acc-dialog-in var(--dur-dialog) var(--ease-out-expo) both}
+  dialog[open]::backdrop{animation:acc-backdrop-in var(--dur-dialog) var(--ease-out-expo) both}
+}
+@media(prefers-reduced-motion:reduce){
+  dialog,dialog[open],dialog::backdrop,dialog[open]::backdrop{animation:none;transition:none}
+}
+@keyframes acc-dialog-in{from{opacity:.96;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes acc-backdrop-in{from{opacity:0}to{opacity:1}}
+.visually-hidden{position:absolute;clip-path:inset(50%);overflow:hidden;width:1px;height:1px;margin:-1px;padding:0;border:0;white-space:nowrap}
+.account-pill{max-width:min(var(--acc-pill-max-w),100%);min-width:var(--acc-hit-min);min-height:var(--acc-hit-min);border:1px solid var(--line-ui);cursor:pointer}
+.account-pill:hover{border-color:var(--bone)}
+.account-pill-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acc-ico{flex:none;display:inline-block;vertical-align:middle}
+.acc-hint-box{display:flex;flex-wrap:wrap;gap:var(--acc-gap);align-items:center;justify-content:space-between;min-width:0;border:1px solid var(--warn);border-left-width:1px}
+.acc-hint-box>span{min-width:0;overflow-wrap:break-word}
+#accountsDialog{width:min(720px,calc(100vw - 24px))}
+#accountTrashDialog,#newProjectDialog{width:min(520px,calc(100vw - 24px))}
+.acc-dialog-head{display:flex;gap:var(--acc-gap);align-items:flex-start;justify-content:space-between;position:sticky;top:-16px;margin:-16px -16px 12px;padding:16px 16px 12px;background:var(--bg-surface);border-bottom:1px solid var(--line);z-index:2}
+.acc-dialog-head h2{margin:0;font-size:clamp(24px,5vw,32px);line-height:1}
+.acc-subtitle{margin-top:4px;color:var(--dim);font-size:15px;line-height:1.45;max-width:68ch}
+.btn.small.acc-close-btn,.acc-close-btn{min-width:var(--acc-hit-min);min-height:var(--acc-hit-min);padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.acc-banner{margin-bottom:12px;padding:12px;border:1px solid var(--line-ui);border-radius:10px;background:var(--ink);display:grid;gap:6px;min-width:0}
+.acc-banner h3{font:800 19px/1.1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin:0}
+.acc-banner p{color:var(--dim);font-size:15px;line-height:1.45;max-width:68ch}
+.acc-banner-warn{border-color:var(--warn)}
+.acc-banner-error{border-color:var(--bad)}
+.acc-banner-error .acc-error-detail,.acc-banner-error p{color:var(--bone)}
+.acc-banner-head{display:flex;align-items:center;gap:var(--acc-gap);color:var(--bad)}
+.acc-banner-warn .acc-banner-head{color:var(--warn)}
+.acc-banner-actions{display:flex;flex-wrap:wrap;gap:var(--acc-gap);margin-top:4px}
+.acc-toolbar{display:flex;flex-wrap:wrap;gap:var(--acc-gap);margin-bottom:12px}
+.acc-add-panel,.acc-rename-form{margin:10px 0 4px;padding:12px;border:1px solid var(--line-ui);border-radius:10px;background:var(--ink);display:grid;gap:8px;min-width:0}
+.acc-add-panel h3{font:800 20px/1.1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin:0}
+.acc-helper{color:var(--dim);font-size:14px;line-height:1.4}
+.acc-input-row{display:flex;align-items:center;gap:var(--acc-gap);min-width:0}
+.acc-input-row input{flex:1 1 auto;min-width:0}
+.acc-counter{font:600 13px var(--mono);color:var(--dim);flex:none}
+.acc-counter.over{color:var(--bad)}
+.acc-field-error{display:flex;align-items:center;gap:6px;color:var(--bad);font-size:14px;font-weight:700}
+.acc-form-actions{display:flex;flex-wrap:wrap;gap:var(--acc-gap);margin-top:4px}
+.acc-form-actions>.btn.small,.acc-form-actions>button,.acc-banner-actions>.btn.small,.acc-banner-actions>button,.acc-toolbar>.btn.small,.acc-toolbar>button,.acc-guard-foot>.btn.small,.acc-guard-foot>button,.acc-hint-box>.btn.small,.acc-hint-box>button,.job .top>.btn.small,.job .top>button{min-height:var(--acc-hit-min);min-width:var(--acc-hit-min);display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.acc-list{display:grid;gap:10px;list-style:none;padding:0;margin:12px 0 0;min-width:0}
+.acc-row{display:grid;gap:10px;padding:12px;border:1px solid var(--line-ui);border-radius:10px;background:var(--ink);min-width:0}
+.acc-row[data-active="true"]{border-color:var(--go);background:var(--ink2)}
+.acc-row-head{display:flex;flex-wrap:wrap;gap:var(--acc-gap);align-items:center;min-width:0}
+.acc-rank{font:700 13px var(--mono);color:var(--dim);flex:none}
+.acc-label{flex:1 1 140px;min-width:0;overflow-wrap:anywhere;font-size:17px;line-height:1.35}
+.acc-badges{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.acc-badge{display:inline-flex;align-items:center;padding:2px 8px;border:1px solid var(--line-ui);border-radius:99px;font:700 12px/1.3 var(--mono);text-transform:uppercase}
+.acc-badge-active{background:var(--go);color:var(--fg-on-status);border-color:var(--go)}
+.acc-badge-primary{background:var(--ink3);color:var(--bone)}
+.acc-badge-disabled{background:var(--ink);color:var(--dim)}
+.acc-badge-warn{background:var(--warn);color:var(--fg-on-status);border-color:var(--warn)}
+.acc-badge-tally{background:var(--tally);color:var(--fg-on-status);border-color:var(--tally)}
+.acc-toggle{display:inline-flex;align-items:center;gap:6px;margin-left:auto}
+.acc-toggle-label{font:700 13px var(--mono);color:var(--dim)}
+.acc-switch{min-width:var(--acc-hit-min);min-height:var(--acc-hit-min);display:inline-flex;align-items:center;justify-content:center;background:transparent;border:0;padding:0;cursor:pointer}
+.acc-switch:disabled{opacity:.45;cursor:not-allowed}
+.acc-switch-track{width:var(--acc-switch-w);height:var(--acc-switch-h);border-radius:99px;background:var(--ink3);border:1px solid var(--line-ui);position:relative;display:inline-flex;align-items:center;padding:2px}
+.acc-switch-thumb{width:18px;height:18px;border-radius:50%;background:var(--bone);transition:transform .15s var(--ease-out-expo)}
+.acc-switch[aria-checked="true"] .acc-switch-track{background:var(--go);border-color:var(--go)}
+.acc-switch[aria-checked="true"] .acc-switch-thumb{background:var(--fg-on-status);transform:translateX(16px)}
+.acc-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;min-width:0;font:500 13px/1.35 var(--mono);font-variant-numeric:tabular-nums}
+.acc-meta>div{min-width:0;display:grid;gap:2px}
+.acc-meta span{color:var(--dim);font-size:12px;text-transform:uppercase}
+.acc-meta strong{color:var(--bone);font-weight:700}
+.acc-meta .acc-meta-ttl{display:block;font:600 12px/1.35 var(--mono);color:var(--warn);text-transform:none;margin-top:2px;overflow-wrap:anywhere}
+.acc-meta .acc-meta-detail{grid-column:1/-1;display:grid;gap:2px;min-width:0}
+.acc-meta .acc-meta-detail p{font:500 13px/1.4 var(--body);color:var(--dim);overflow-wrap:anywhere}
+.acc-setting-row{margin-bottom:12px;padding:12px;border:1px solid var(--line-ui);border-radius:10px;background:var(--bg-recessed);display:grid;gap:6px;min-width:0}
+.acc-setting-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--acc-gap);min-width:0}
+.acc-setting-title{font:700 15px/1.3 var(--body);color:var(--bone);min-width:0;overflow-wrap:anywhere}
+.acc-setting-note{font-size:13px;line-height:1.4;color:var(--dim);max-width:68ch;overflow-wrap:anywhere}
+.acc-setting-empty{padding:8px 10px;border:1px solid var(--warn);border-radius:8px;background:var(--ink2);color:var(--bone);font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+.acc-setting-empty strong{display:block;color:var(--warn);margin-bottom:2px}
+.acc-hint-failover{display:flex;align-items:flex-start;gap:var(--acc-gap);min-width:0}
+.acc-hint-failover .acc-ico{color:var(--warn);margin-top:3px}
+.acc-hint-failover>div{display:grid;gap:2px;min-width:0}
+.acc-hint-failover strong{color:var(--warn);font-size:15px;line-height:1.3}
+.acc-hint-failover p{font-size:14px;line-height:1.4;color:var(--bone);overflow-wrap:anywhere}
+.acc-failover-strip{margin-bottom:10px;padding:10px 12px;border:1px solid var(--warn);border-radius:10px;background:var(--bg-recessed);display:grid;gap:4px;min-width:0}
+.acc-failover-strip-head{display:flex;align-items:center;gap:var(--acc-gap);color:var(--warn);font:700 14px/1.3 var(--body)}
+.acc-failover-strip p{font-size:13px;line-height:1.4;color:var(--dim);overflow-wrap:anywhere}
+.acc-project-val{overflow-wrap:anywhere;min-width:0}
+.acc-tier3{display:grid;gap:8px;min-width:0}
+.acc-actions{display:flex;flex-wrap:wrap;gap:var(--acc-gap);align-items:center;min-width:0}
+.acc-actions>.btn.small,.acc-actions>button{min-height:var(--acc-hit-min);min-width:var(--acc-hit-min);display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.acc-icon-btn{padding:0 10px}
+.acc-reasons{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;font-size:13px;color:var(--dim);min-width:0;overflow-wrap:anywhere}
+.acc-skel{min-height:148px;border:1px solid var(--line-ui);border-radius:10px;background:var(--ink);padding:12px;display:grid;gap:12px;align-content:space-between}
+@media(max-width:559px){.acc-skel{min-height:204px}}
+.acc-skel-bar{height:22px;width:55%;border-radius:6px;background:var(--ink3)}
+.acc-skel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px}
+.acc-skel-grid span{height:34px;border-radius:6px;background:var(--ink3)}
+.acc-btn-primary{background:var(--tally);border-color:var(--tally);color:var(--fg-on-status)}
+.acc-btn-primary:hover{border-color:var(--bone)}
+.acc-btn-danger{background:var(--bad);border-color:var(--bad);color:var(--fg-on-status)}
+.acc-btn-danger-outline{border-color:var(--bad);color:var(--bad)}
+.acc-trash-copy{margin-top:8px;line-height:1.45;overflow-wrap:anywhere}
+.acc-trash-note{margin-top:8px;color:var(--dim);font-size:15px;line-height:1.45;overflow-wrap:anywhere}
+.acc-job-badge{border:1px solid var(--line-ui);color:var(--bone);text-transform:none;letter-spacing:.01em}
+.job .acc-failover-trail,.job .acc-portable-retry-hint{font:500 13px/1.4 var(--mono);color:var(--dim);overflow-wrap:anywhere;-webkit-line-clamp:unset;display:block;overflow:visible}
+.job .acc-portable-retry-hint{font-family:var(--body)}
+.acc-draft-banner{margin:0 0 12px;padding:12px;border:1px solid var(--warn);border-radius:10px;background:var(--bg-recessed);display:grid;gap:8px;min-width:0}
+.acc-draft-banner-head{display:flex;align-items:center;gap:var(--acc-gap);color:var(--warn)}
+.acc-draft-banner h3{font:800 19px/1.1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin:0}
+.acc-draft-banner p{font-size:14px;line-height:1.45;color:var(--bone);overflow-wrap:anywhere}
+.acc-draft-banner .btn.small.ghost{border:1px solid var(--line-ui)}
+.acc-inline-hint{margin-top:var(--acc-gap);font:500 14px/1.45 var(--body);color:var(--warn);max-width:68ch;min-width:0;overflow-wrap:anywhere}
+.acc-retry-guard{padding:10px 12px;border:1px solid var(--warn);border-radius:10px;background:var(--ink);display:grid;grid-template-columns:minmax(0,1fr);gap:6px;min-width:0}
+.acc-retry-guard strong{display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--warn);font-size:15px;min-width:0;overflow-wrap:anywhere}
+.acc-retry-guard p{color:var(--bone);font-size:14px;-webkit-line-clamp:unset;display:block;overflow-wrap:anywhere;word-break:break-word}
+.acc-guard-foot{display:flex;flex-wrap:wrap;gap:var(--acc-gap);align-items:center;justify-content:space-between;color:var(--dim);font-size:13px;min-width:0}
+.acc-guard-foot>span{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+#newProjForm{display:grid;gap:10px;margin-top:10px}
+.toast{position:fixed;left:16px;right:16px;bottom:calc(var(--rollbar-h,108px) + 12px);z-index:60;width:fit-content;max-width:min(560px,calc(100vw - 32px));margin:0 auto;padding:12px 18px;border-radius:10px;background:var(--bone);color:var(--ink);font-weight:700;font-size:15px;box-shadow:0 12px 40px rgba(0,0,0,.5);overflow-wrap:anywhere}
 .toast.bad{background:var(--bad);color:#fff}
 input[type=range]{width:100%;accent-color:var(--tally);height:30px}
 </style>
@@ -135,18 +275,19 @@ input[type=range]{width:100%;accent-color:var(--tally);height:30px}
 .tabs button{flex:0 0 auto;min-height:46px;padding:2px 14px;font:800 19px/1.05 var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--dim);background:var(--ink2);border:2px solid var(--line);border-radius:10px;cursor:pointer;white-space:nowrap}
 .tabs button.on{background:var(--tally);border-color:var(--tally);color:var(--ink)}
 .tabs button small{display:block;font:700 12px var(--mono);letter-spacing:0;text-transform:none;opacity:.8}
-.panel{display:none;animation:rise .35s both}
+.panel{display:none;min-width:0;animation:rise .35s both}
 .panel.on{display:block}
 .step{font:700 13px var(--mono);color:var(--tally);letter-spacing:.14em;text-transform:uppercase;margin-bottom:3px}
-.lede{color:var(--dim);font-size:16px;margin:0 0 12px;max-width:70ch}
-.rowbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.lede{color:var(--dim);font-size:16px;margin:0 0 12px;max-width:70ch;overflow-wrap:break-word}
+.rowbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;min-width:0}
 audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
-.cast-card{display:flex;gap:12px;align-items:center;padding:8px;border:2px solid var(--line);border-radius:10px;background:var(--ink);margin-bottom:8px}
+.cast-card{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:8px;border:2px solid var(--line);border-radius:10px;background:var(--ink);margin-bottom:8px;min-width:0}
 .cast-card img{width:52px;height:52px;object-fit:cover;border-radius:10px;background:#fff;flex:0 0 auto}
-.cast-card b{display:block;font:800 20px var(--display);letter-spacing:.04em}
+.cast-card b{display:block;font:800 20px var(--display);letter-spacing:.04em;overflow-wrap:anywhere}
 .cast-card .grow{flex:1;min-width:0}
-.pickrow{display:grid;gap:8px}
-.capstyles{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:8px}
+.pickrow{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;min-width:0}
+.pickrow>*{min-width:0}
+.capstyles{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(128px,100%),1fr));gap:8px}
 .capstyle{display:flex;flex-direction:column;gap:5px;padding:8px;text-align:left;color:var(--bone);background:var(--ink);border:2px solid var(--line);border-radius:10px;cursor:pointer;font:500 15px var(--body)}
 .capstyle:hover{border-color:var(--bone)}
 .capstyle.on{border-color:var(--tally);box-shadow:inset 0 0 0 2px var(--tally)}
@@ -169,14 +310,14 @@ audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
 .capprev{border-radius:10px;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:110px;padding:0}
 .capprev img{display:block;max-width:100%;max-height:72vh;object-fit:contain;cursor:crosshair}
 .capprev .empty{padding:16px;text-align:center}
-@media(min-width:760px){.pickrow{grid-template-columns:1fr 1fr}}
+@media(min-width:760px){.pickrow{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 </style></head>
 <body>
 <div class="clapper"></div>
 <div class="wrap">
   <header>
     <h1>Flow <span>Studio</span></h1>
-    <div class="status" id="status"><span class="pill"><i class="tally"></i>Connecting…</span></div>
+    <div class="status" id="status"><span class="pill"><i class="tally dim"></i>Connecting...</span></div>
   </header>
   <div id="offline"></div>
   <div id="hint"></div>
@@ -210,7 +351,9 @@ audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
             <div><label class="f">Personality (optional)</label><input type="text" id="castMood" placeholder="Cheerful, clumsy, always in a hurry"></div>
             <div><label class="f">Voice (optional)</label><select id="castVoice"></select></div>
           </div>
+          <div id="cast_mismatch" style="margin-top:10px"></div>
           <div class="rowbtns"><button class="btn" id="castCreate">Create character</button><button class="btn ghost small" id="castReload">Reload</button></div>
+          <p id="castCreateHint" class="acc-inline-hint" hidden></p>
           <p class="empty" id="castInfo" style="margin-top:12px"></p>
         </div>
       </section>
@@ -230,6 +373,7 @@ audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
           <div class="phrase" id="f_engineNote"></div>
         </div>
         <h2 style="margin-top:18px">Frames <small id="f_count"></small></h2>
+        <div id="f_mismatch"></div>
         <div id="f_scenes"></div>
         <button class="btn ghost add" data-add="frames">+ Add frame</button>
         <div class="card" style="margin-top:12px">
@@ -261,6 +405,7 @@ audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
           </div>
         </div>
         <h2 style="margin-top:18px">Shots <small id="s_count"></small></h2>
+        <div id="s_mismatch"></div>
         <div id="s_scenes"></div>
         <button class="btn ghost add" data-add="shots">+ Add shot</button>
 
@@ -315,8 +460,7 @@ audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
 
       <!-- RESTYLE -->
       <section class="panel" data-panel="restyle">
-        <div class="step">Optional</div>
-        <h2>Restyle</h2>
+        <h2>Restyle <small>optional</small></h2>
         <p class="lede">Change an existing clip without reshooting it: relight it, change the weather or time of day, remove or restyle something. Flow shows no price before an edit, and a 4-second clip cost 20 credits when measured.</p>
         <div class="card">
           <label class="f">Project folder for the result</label><input type="text" id="e_project" placeholder="MyFilm">
@@ -384,7 +528,7 @@ audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
           <p class="empty" style="margin-top:4px">Drag to place the words anywhere, or tap the preview where you want them.</p>
           <div id="cap_colorWrap"><label class="f">Highlight colour</label><div class="swatches" id="cap_colors"></div></div>
           <label class="f">Preview <span id="cap_previewNote" style="text-transform:none;letter-spacing:0"></span></label>
-          <div class="capprev"><img id="cap_preview" alt="Your video with the captions on it" hidden><p class="empty" id="cap_previewEmpty">Pick a video to see your captions on it.</p></div>
+          <div class="capprev"><img id="cap_preview" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="Your video with the captions on it" hidden><p class="empty" id="cap_previewEmpty">Pick a video to see your captions on it.</p></div>
           <label class="f" for="cap_text">The words <span id="cap_textNote" style="text-transform:none;letter-spacing:0"></span></label>
           <textarea id="cap_text" placeholder="The words appear here once the video has been listened to."></textarea>
           <p class="empty" style="margin-top:6px">Fix anything misheard: each word keeps its timing. Press Enter to start a new caption at that point.</p>
@@ -395,8 +539,7 @@ audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
 
       <!-- LIBRARY -->
       <section class="panel" data-panel="library">
-        <div class="step">Reference</div>
-        <h2>Library</h2>
+        <h2>Library <small>reference</small></h2>
         <p class="lede">Everything already in the open Flow project. Download anything without regenerating it — the 1080p and 2K upscales are free.</p>
         <div class="card">
           <label class="f">Save into project folder</label><input type="text" id="l_project" placeholder="MyFilm">
@@ -432,6 +575,60 @@ audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
 
 <dialog id="picker"><h2 style="font-size:34px">Pick from Flow</h2><p class="empty">Media already in the open Flow project.</p><div class="lib" id="pickList"></div><div style="margin-top:16px"><button class="btn small ghost" onclick="picker.close()">Close</button></div></dialog>
 <dialog id="viewer"><div class="viewbar"><button type="button" class="btn small ghost" id="viewerTrash" style="border-color:var(--bad);color:var(--bad)">Move to <span data-place="bin">the Mac's Trash</span></button><button type="button" class="btn small" onclick="viewer.close()" autofocus>Close</button></div><div id="viewerBody"></div><p class="empty" id="viewerPath"></p></dialog>
+<dialog id="accountsDialog" aria-labelledby="accDialogTitle" closedby="closerequest">
+  <div class="acc-dialog-head">
+    <div><h2 id="accDialogTitle"></h2><p id="accDialogSubtitle" class="acc-subtitle"></p></div>
+    <button type="button" id="accDialogClose" class="btn small ghost acc-close-btn"></button>
+  </div>
+  <div id="accStateBanner"></div>
+  <div id="accActionAlert"></div>
+  <div id="accToolbar" class="acc-toolbar">
+    <button type="button" id="accAddToggle" class="btn small acc-btn-primary" aria-expanded="false" aria-controls="accAddPanel"></button>
+  </div>
+  <div id="accFailoverRow" class="acc-setting-row">
+    <div class="acc-setting-head">
+      <strong id="accFailoverLabel" class="acc-setting-title"></strong>
+      <button type="button" id="accFailoverToggle" role="switch" class="acc-switch" aria-checked="true" aria-labelledby="accFailoverLabel" aria-describedby="accFailoverHelper">
+        <span class="acc-switch-track"><span class="acc-switch-thumb"></span></span>
+      </button>
+    </div>
+    <p id="accFailoverHelper" class="acc-setting-note"></p>
+    <div id="accFailoverEmptyNote" class="acc-setting-empty" hidden></div>
+    <p id="accFailoverLockReason" class="acc-setting-note" hidden></p>
+  </div>
+  <section id="accAddPanel" class="acc-add-panel" hidden>
+    <h3 id="accAddHeading"></h3>
+    <form id="accAddForm" novalidate>
+      <label class="f" for="accAddInput" id="accAddLabel"></label>
+      <p id="accAddHelper" class="acc-helper"></p>
+      <div class="acc-input-row">
+        <input type="text" id="accAddInput" maxlength="60" autocomplete="off" aria-describedby="accAddHelper accAddCount">
+        <span id="accAddCount" class="acc-counter tabular">0/60</span>
+      </div>
+      <p id="accAddError" class="acc-field-error" hidden></p>
+      <div class="acc-form-actions">
+        <button type="submit" id="accAddSubmit" class="btn small acc-btn-primary"></button>
+        <button type="button" id="accAddCancel" class="btn small ghost"></button>
+      </div>
+    </form>
+  </section>
+  <ol id="accList" class="acc-list"></ol>
+</dialog>
+<dialog id="accountTrashDialog" aria-labelledby="accTrashTitle" closedby="closerequest">
+  <div id="accTrashBody"></div>
+</dialog>
+<dialog id="newProjectDialog" aria-labelledby="newProjTitle" closedby="closerequest">
+  <h2 id="newProjTitle"></h2>
+  <p id="newProjDesc" class="acc-subtitle"></p>
+  <form id="newProjForm" novalidate>
+    <label class="f" for="newProjTitleInput" id="newProjLabel"></label>
+    <input type="text" id="newProjTitleInput" maxlength="80" autocomplete="off" autofocus>
+    <div class="acc-form-actions">
+      <button type="submit" id="newProjConfirm" class="btn small acc-btn-primary"></button>
+      <button type="button" id="newProjCancel" class="btn small ghost"></button>
+    </div>
+  </form>
+</dialog>
 <input type="file" id="file" hidden>
 <script>
 const TOKEN = "__FLOW_TOKEN__";
@@ -439,12 +636,24 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const LIVE = location.protocol.startsWith("http") && TOKEN !== "__FLOW_" + "TOKEN__";
-const api = async (method, body = {}) => {
-  const res = await fetch(`/api/${method}`, { method: "POST", headers: { "content-type": "application/json", "x-flow-token": TOKEN }, body: JSON.stringify(body) });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || res.statusText);
+const api = async (method, body = {}, opts = {}) => {
+  const res = await fetch(`/api/${method}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-flow-token": TOKEN },
+    body: JSON.stringify(body),
+    signal: opts.signal,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || res.statusText);
+    err.code = data.code ?? null;
+    err.status = res.status;
+    err.meta = data.meta ?? null;
+    throw err;
+  }
   return data;
 };
+let accountUi = null, pollCtrl = null, pollSeq = 0, bootCastRequested = false;
 const media = (path) => `/media?token=${TOKEN}&path=${encodeURIComponent(path)}`;
 const toast = (msg, bad) => { const t = Object.assign(document.createElement("div"), { className: "toast" + (bad ? " bad" : ""), textContent: msg }); document.body.append(t); setTimeout(() => t.remove(), bad ? 7000 : 3200); };
 const guard = () => { if (!LIVE) { toast("Not connected — start Flow Studio first.", true); return false; } return true; };
@@ -466,7 +675,7 @@ const DEFAULTS = {
 const S = Object.assign(structuredClone(DEFAULTS), JSON.parse(localStorage.getItem("flow-studio-v2") || "{}"));
 const save = () => localStorage.setItem("flow-studio-v2", JSON.stringify(S));
 if (!["kokoro", "gemini"].includes(S.narrate.engine)) S.narrate.engine = "kokoro"; // the computer-voice engine is gone
-let TECH = [], VOICES = { kokoro: [], gemini: [] }, CAST = [], LIB = [], GAL = [], castImage = null, pickTarget = null, busy = false;
+let TECH = [], VOICES = { kokoro: [], gemini: [] }, CAST = [], LIB = [], GAL = [], castImage = null, pickTarget = null, busy = false, castCreating = false;
 
 /* ---------- tabs ---------- */
 function showTab(name) {
@@ -518,20 +727,26 @@ document.addEventListener("click", (e) => {
 });
 
 /* ---------- slots (frames / references / audio) ---------- */
+const FALLBACK_X_SVG = '<svg class="acc-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
 function slotHtml(kind, i, val, label) {
   const name = val ? (val.asset ?? val.name) : "";
   const pic = val?.path && /\.(jpe?g|png|webp|gif)$/i.test(val.path);
-  return `<div class="slot" data-slot="${kind}" data-i="${i}">${pic ? `<img src="${media(val.path)}">` : ""}
-    ${val ? `<button class="x" data-clear="${kind}" data-i="${i}">×</button><span class="tag">${esc(name)}</span>`
+  const sv = val && accountUi ? accountUi.getSlotView(val) : { mismatched: false, badgeText: null, clearAria: "Clear asset" };
+  const cls = val ? `slot is-populated${sv.mismatched ? " is-mismatch" : ""}` : "slot";
+  const xIcon = accountUi ? accountUi.svgIcon("x") : FALLBACK_X_SVG;
+  const badge = sv.badgeText ? `<span class="acc-draft-slot-badge">${esc(sv.badgeText)}</span>` : "";
+  return `<div class="${cls}" data-slot="${kind}" data-i="${i}">${pic ? `<img src="${media(val.path)}">` : ""}
+    ${val ? `<button type="button" class="x" data-clear="${kind}" data-i="${i}" aria-label="${esc(sv.clearAria)}">${xIcon}</button>${badge}<span class="tag">${esc(name)}</span>`
           : `<span>${label}</span><span class="two"><button type="button" data-src="upload">Upload</button><button type="button" data-src="flow">${/music|voiceover/.test(kind) ? "My narrations" : "From Flow"}</button></span>`}</div>`;
 }
 function setSlot(kind, idx, val) {
-  if (kind === "capvideo") return void setCapVideo(val);
-  if (kind === "cast") castImage = val;
-  else if (kind === "music" || kind === "voiceover") S.cut[kind] = val;
-  else if (kind === "clip") { (S.cut.clips ??= []); if (val) S.cut.clips.push(val); }
-  else if (kind.startsWith("ref")) { const [, group, i, j] = kind.split(":"); const sc = S[group].scenes[+i]; val ? (sc.refs[+j] = val) : sc.refs.splice(+j, 1); }
-  else { const [, group, i] = kind.split(":"); S[group].scenes[+i][kind.startsWith("first") ? "first" : "last"] = val; }
+  const nextVal = val && accountUi ? accountUi.stampSlot(val) : val;
+  if (kind === "capvideo") return void setCapVideo(nextVal);
+  if (kind === "cast") castImage = nextVal;
+  else if (kind === "music" || kind === "voiceover") S.cut[kind] = nextVal;
+  else if (kind === "clip") { (S.cut.clips ??= []); if (nextVal) S.cut.clips.push(nextVal); }
+  else if (kind.startsWith("ref")) { const [, group, i, j] = kind.split(":"); const sc = S[group].scenes[+i]; nextVal ? (sc.refs[+j] = nextVal) : sc.refs.splice(+j, 1); }
+  else { const [, group, i] = kind.split(":"); S[group].scenes[+i][kind.startsWith("first") ? "first" : "last"] = nextVal; }
   save(); renderAll();
 }
 document.addEventListener("click", (e) => {
@@ -565,12 +780,21 @@ async function openPicker(audioOnly) {
     } catch (err) { $("#pickList").innerHTML = `<p class="empty" style="color:var(--bad)">${esc(err.message)}</p>`; }
     return;
   }
+  const sig = accountUi ? accountUi.getAccountSignal() : undefined;
+  const ep = accountUi ? accountUi.getAccountEpoch() : 0;
   try {
-    if (!LIB.length) LIB = await api("assets");
+    if (!LIB.length) {
+      const assets = await api("assets", {}, sig ? { signal: sig } : {});
+      if (accountUi && ep !== accountUi.getAccountEpoch()) return;
+      LIB = assets;
+    }
     $("#pickList").innerHTML = LIB.map((a, n) => `<button data-n="${n}"><span>${esc(a.name)}</span><em>${a.kind}</em></button>`).join("") || `<p class="empty">Nothing in the project yet.</p>`;
-  } catch (err) { $("#pickList").innerHTML = `<p class="empty" style="color:var(--bad)">${esc(err.message)}</p>`; }
+  } catch (err) {
+    if (err && err.name === "AbortError") return;
+    $("#pickList").innerHTML = `<p class="empty" style="color:var(--bad)">${esc(err.message)}</p>`;
+  }
 }
-$("#pickList").addEventListener("click", (e) => { const b = e.target.closest("button[data-n]"); if (!b) return; setSlot(pickTarget.kind, pickTarget.i, { asset: LIB[+b.dataset.n].name }); picker.close(); });
+$("#pickList").addEventListener("click", (e) => { const b = e.target.closest("button[data-n]"); if (!b) return; const item = LIB[+b.dataset.n]; if (!item) return; setSlot(pickTarget.kind, pickTarget.i, { asset: item.name }); picker.close(); });
 
 /* ---------- cast ---------- */
 function renderCast() {
@@ -580,6 +804,14 @@ function renderCast() {
     : `<p class="empty">No characters yet — describe one below and Flow will draw it.</p>`;
   const slot = $('[data-slot="cast"]'); if (slot) slot.outerHTML = slotHtml("cast", 0, castImage, "Picture instead of a description");
   $("#castVoice").innerHTML = `<option value="">No voice</option>` + (VOICES.gemini ?? []).map((v) => `<option value="${v.name}">${v.name} — ${v.description}</option>`).join("");
+  const castBlock = accountUi ? accountUi.getCastBlock() : null;
+  $("#cast_mismatch").innerHTML = accountUi ? accountUi.renderDraftBanner("cast") : "";
+  const castHint = $("#castCreateHint");
+  castHint.textContent = castBlock ? castBlock.blockedReason : "";
+  castHint.hidden = !castBlock;
+  $("#castCreate").disabled = castCreating || Boolean(castBlock);
+  if (castBlock) $("#castCreate").setAttribute("aria-describedby", "castCreateHint");
+  else $("#castCreate").removeAttribute("aria-describedby");
 }
 $("#castList").addEventListener("click", async (e) => {
   const use = e.target.closest("[data-castuse]"), edit = e.target.closest("[data-castedit]");
@@ -587,7 +819,8 @@ $("#castList").addEventListener("click", async (e) => {
     const group = S.tab === "shots" ? "shots" : "frames";
     const sc = S[group].scenes[0];
     if (sc.refs.length >= 3) return toast("Scene 1 already has 3 references.", true);
-    sc.refs.push({ asset: use.dataset.castuse }); save(); renderAll();
+    const refVal = accountUi ? accountUi.stampSlot({ asset: use.dataset.castuse }) : { asset: use.dataset.castuse };
+    sc.refs.push(refVal); save(); renderAll();
     return toast(`${use.dataset.castuse} added to ${group === "shots" ? "shot" : "frame"} 1`);
   }
   if (edit) {
@@ -598,27 +831,35 @@ $("#castList").addEventListener("click", async (e) => {
     catch (err) { toast(err.message, true); }
   }
 });
-async function loadCast() {
-  const names = await api("characters");
-  const outs = await api("outputs").catch(() => ({ projects: [] }));
-  const cast = outs.projects.find((p) => p.name === "_cast");
-  return names.map((c) => ({ ...c, portrait: cast?.files.find((f) => f.name.toLowerCase().startsWith(c.name.toLowerCase().replace(/[^\w.-]+/g, "_").slice(0, 8)))?.path }));
+async function loadCast(signal, epoch) {
+  const sig = signal || (accountUi ? accountUi.getAccountSignal() : undefined);
+  const ep = epoch !== undefined ? epoch : (accountUi ? accountUi.getAccountEpoch() : 0);
+  const res = await api("cast", {}, sig ? { signal: sig } : {});
+  if (accountUi && ep !== accountUi.getAccountEpoch()) return CAST;
+  return res.characters;
 }
-$("#castReload").onclick = async () => { if (!guard()) return; try { CAST = await loadCast(); renderCast(); toast(`${CAST.length} character(s)`); } catch (err) { toast(err.message, true); } };
-$("#castCreate").onclick = async () => {
+$("#castReload").onclick = async () => {
   if (!guard()) return;
+  try { CAST = await loadCast(); renderCast(); toast(`${CAST.length} character(s)`); }
+  catch (err) { if (!err || err.name !== "AbortError") toast(err.message, true); }
+};
+$("#castCreate").onclick = async () => {
+  if (!guard() || (accountUi && accountUi.getCastBlock())) return;
   const name = $("#castName").value.trim(), look = $("#castLook").value.trim();
   if (!name) return toast("Give the character a name.", true);
   if (!look && !castImage) return toast("Describe them, or attach a picture.", true);
+  castCreating = true;
   const b = $("#castCreate"); b.disabled = true; b.textContent = "Drawing…";
   $("#castInfo").textContent = "Flow is drawing the portrait and saving the character…";
   try {
     const out = await api("character", { name, describe: look || undefined, image: castImage ? (castImage.asset ? `asset:${castImage.asset}` : castImage.path) : undefined, personality: $("#castMood").value.trim() || undefined, voice: $("#castVoice").value || undefined });
     $("#castInfo").innerHTML = `Created <b>${esc(out.name)}</b>.${out.portrait ? `<br><img class="out" style="max-width:220px;margin-top:10px;border-radius:12px" src="${media(out.portrait)}">` : ""}`;
     castImage = null; $("#castName").value = ""; $("#castLook").value = ""; $("#castMood").value = "";
-    CAST = await loadCast(); renderCast();
+    CAST = await loadCast();
   } catch (err) { $("#castInfo").textContent = err.message; toast(err.message, true); }
-  b.disabled = false; b.textContent = "Create character";
+  castCreating = false;
+  b.textContent = "Create character";
+  renderCast();
 };
 
 /* ---------- scene cards (frames + shots) ---------- */
@@ -642,8 +883,35 @@ function sceneCards(group) {
   }).join("");
 }
 function renderScenes() {
+  const activeEl = document.activeElement;
+  let focusState = null;
+  if (activeEl && activeEl.matches('textarea[data-k="prompt"]')) {
+    const card = activeEl.closest(".scene");
+    if (card) {
+      focusState = {
+        group: card.dataset.group,
+        i: card.dataset.i,
+        start: activeEl.selectionStart,
+        end: activeEl.selectionEnd,
+        dir: activeEl.selectionDirection,
+        scrollTop: activeEl.scrollTop,
+      };
+    }
+  }
+  $("#f_mismatch").innerHTML = accountUi ? accountUi.renderDraftBanner("frames") : "";
+  $("#s_mismatch").innerHTML = accountUi ? accountUi.renderDraftBanner("shots") : "";
   $("#f_scenes").innerHTML = sceneCards("frames");
   $("#s_scenes").innerHTML = sceneCards("shots");
+  if (focusState) {
+    const next = $(`.scene[data-group="${focusState.group}"][data-i="${focusState.i}"] textarea[data-k="prompt"]`);
+    if (next) {
+      next.focus({ preventScroll: true });
+      if (typeof focusState.start === "number" && typeof focusState.end === "number") {
+        next.setSelectionRange(focusState.start, focusState.end, focusState.dir ?? "none");
+      }
+      next.scrollTop = focusState.scrollTop;
+    }
+  }
   $("#f_count").textContent = `${S.frames.scenes.length} frame${S.frames.scenes.length > 1 ? "s" : ""}`;
   $("#s_count").textContent = `${S.shots.scenes.length} shot${S.shots.scenes.length > 1 ? "s" : ""}`;
   $("#f_engineNote").textContent = S.frames.engine === "agent"
@@ -754,9 +1022,15 @@ $("#n_out").addEventListener("click", (e) => {
 /* ---------- restyle ---------- */
 $("#e_load").onclick = async () => {
   if (!guard()) return;
-  const b = $("#e_load"); b.disabled = true; b.textContent = "Reading…";
-  try { const vids = await api("assets", { kind: "video" }); $("#e_asset").innerHTML = vids.map((v) => `<option>${esc(v.name)}</option>`).join("") || `<option value="">No clips in the project</option>`; }
-  catch (err) { toast(err.message, true); }
+  const b = $("#e_load"); b.disabled = true; b.textContent = "Reading...";
+  const sig = accountUi ? accountUi.getAccountSignal() : undefined;
+  const ep = accountUi ? accountUi.getAccountEpoch() : 0;
+  try {
+    const vids = await api("assets", { kind: "video" }, sig ? { signal: sig } : {});
+    if (!accountUi || ep === accountUi.getAccountEpoch()) {
+      $("#e_asset").innerHTML = vids.map((v) => `<option>${esc(v.name)}</option>`).join("") || `<option value="">No clips in the project</option>`;
+    }
+  } catch (err) { if (!err || err.name !== "AbortError") toast(err.message, true); }
   b.disabled = false; b.textContent = "Reload clips";
 };
 $("#e_go").onclick = async () => {
@@ -773,9 +1047,15 @@ $("#e_go").onclick = async () => {
 $("#k_mode").onchange = () => ($("#k_castwrap").style.display = $("#k_mode").value === "likeness" ? "" : "none");
 $("#k_load").onclick = async () => {
   if (!guard()) return;
-  const b = $("#k_load"); b.disabled = true; b.textContent = "Reading…";
-  try { const vids = await api("assets", { kind: "video" }); $("#k_asset").innerHTML = vids.map((v) => `<option>${esc(v.name)}</option>`).join("") || `<option value="">No clips in the project</option>`; }
-  catch (err) { toast(err.message, true); }
+  const b = $("#k_load"); b.disabled = true; b.textContent = "Reading...";
+  const sig = accountUi ? accountUi.getAccountSignal() : undefined;
+  const ep = accountUi ? accountUi.getAccountEpoch() : 0;
+  try {
+    const vids = await api("assets", { kind: "video" }, sig ? { signal: sig } : {});
+    if (!accountUi || ep === accountUi.getAccountEpoch()) {
+      $("#k_asset").innerHTML = vids.map((v) => `<option>${esc(v.name)}</option>`).join("") || `<option value="">No clips in the project</option>`;
+    }
+  } catch (err) { if (!err || err.name !== "AbortError") toast(err.message, true); }
   b.disabled = false; b.textContent = "Reload clips";
 };
 $("#k_go").onclick = async () => {
@@ -1010,10 +1290,19 @@ $("#cap_go").onclick = async () => {
 const chosen = new Set();
 $("#l_load").onclick = async () => {
   if (!guard()) return;
-  const b = $("#l_load"); b.disabled = true; b.textContent = "Reading Flow…";
-  $("#l_list").innerHTML = `<p class="empty">Scrolling the project…</p>`;
-  try { LIB = await api("assets"); chosen.clear(); renderLib(); if (!LIB.length) $("#l_list").innerHTML = `<p class="empty">Nothing in the project yet.</p>`; }
-  catch (err) { $("#l_list").innerHTML = `<p class="empty" style="color:var(--bad)">${esc(err.message)}</p>`; }
+  const b = $("#l_load"); b.disabled = true; b.textContent = "Reading Flow...";
+  $("#l_list").innerHTML = `<p class="empty">Scrolling the project...</p>`;
+  const sig = accountUi ? accountUi.getAccountSignal() : undefined;
+  const ep = accountUi ? accountUi.getAccountEpoch() : 0;
+  try {
+    const assets = await api("assets", {}, sig ? { signal: sig } : {});
+    if (!accountUi || ep === accountUi.getAccountEpoch()) {
+      LIB = assets; chosen.clear(); renderLib();
+      if (!LIB.length) $("#l_list").innerHTML = `<p class="empty">Nothing in the project yet.</p>`;
+    }
+  } catch (err) {
+    if (!err || err.name !== "AbortError") $("#l_list").innerHTML = `<p class="empty" style="color:var(--bad)">${esc(err.message)}</p>`;
+  }
   b.disabled = false; b.textContent = "Reload library";
 };
 function renderLib() {
@@ -1046,26 +1335,41 @@ function estimate() {
   const tab = S.tab;
   const btn = $("#roll");
   btn.textContent = tab === "shots" ? "Roll" : tab === "frames" ? "Render" : "Roll";
+  const rollBlock = accountUi ? accountUi.getRollBlock() : null;
   if (tab === "frames") {
     const ready = S.frames.scenes.filter((s) => s.prompt.trim()).length;
     $("#estNum").textContent = "0 credits";
-    $("#estSub").textContent = `${ready} frame(s) ready · images are free`;
-    btn.disabled = busy || !ready;
+    $("#estSub").textContent = rollBlock ? rollBlock.blockedReason : `${ready} frame(s) ready · images are free`;
+    if (rollBlock) btn.setAttribute("aria-describedby", "estSub");
+    else btn.removeAttribute("aria-describedby");
+    btn.disabled = busy || !ready || Boolean(rollBlock);
   } else if (tab === "shots") {
     const ready = S.shots.scenes.filter((s) => s.prompt.trim());
     const total = ready.reduce((n, s) => n + sceneCost(s), 0);
     $("#estNum").textContent = `≈ ${total} credits`;
-    $("#estSub").textContent = `${ready.length} shot(s) ready`;
-    btn.disabled = busy || !ready.length;
+    $("#estSub").textContent = rollBlock ? rollBlock.blockedReason : `${ready.length} shot(s) ready`;
+    if (rollBlock) btn.setAttribute("aria-describedby", "estSub");
+    else btn.removeAttribute("aria-describedby");
+    btn.disabled = busy || !ready.length || Boolean(rollBlock);
   } else {
+    btn.removeAttribute("aria-describedby");
     const narrateCost = "Free";
     $("#estNum").textContent = { cast: "Free", narrate: narrateCost, restyle: "≈ 20 credits", cut: "Free", library: "Free" }[tab] ?? "";
     $("#estSub").textContent = { cast: "characters cost nothing", narrate: S.narrate.engine === "gemini" ? "Google AI Studio, free" : `Kokoro, on ${PLACE.computer}`, restyle: "use Restyle clip", cut: "use Assemble film", library: "downloads cost nothing" }[tab] ?? "";
     btn.disabled = true;
   }
 }
+document.addEventListener("click", (e) => {
+  if (!accountUi) return;
+  const clr = e.target.closest("[data-draft-clear]");
+  if (clr) return void accountUi.clearMismatchedDrafts(clr.dataset.draftClear);
+  const sw = e.target.closest("[data-draft-switch]");
+  if (sw) return void accountUi.switchDraftAccount(sw.dataset.draftSwitch);
+  const openAcc = e.target.closest("[data-open-accounts]");
+  if (openAcc && !openAcc.closest("#jobs")) void accountUi.openAccountsDialog();
+});
 $("#roll").onclick = async () => {
-  if (!guard()) return;
+  if (!guard() || (accountUi && accountUi.getRollBlock())) return;
   const group = S.tab === "shots" ? "shots" : "frames";
   const cfg = S[group], video = group === "shots";
   const list = cfg.scenes.filter((x) => x.prompt.trim());
@@ -1148,32 +1452,22 @@ $("#galTrashDir").onclick = async () => {
   const p = GAL.find((x) => x.name === $("#galProject").value); if (!p) return;
   if (await discardLocal(p.dir, `the "${p.name}" folder and its ${p.files.length} file(s)`)) loadGallery();
 };
-$("#jobs").addEventListener("click", async (e) => {
-  const r = e.target.closest("[data-retry]"), c = e.target.closest("[data-cancel]");
-  try { if (r) await api("retry", { job_ids: [r.dataset.retry] }); if (c) await api("cancel", { job_id: c.dataset.cancel }); if (r || c) poll(); }
-  catch (err) { toast(err.message, true); }
-});
-function renderStatus(st) {
-  const f = st.flow, active = st.jobs.some((j) => j.status === "running" || j.status === "queued");
-  busy = false;
-  const cls = !f.signedIn || !f.inProject ? "down" : active ? "rolling" : "ready";
-  const text = !f.signedIn ? "Not signed in" : !f.inProject ? "No project open" : active ? "Working" : "Ready";
-  if (f.credits_remaining !== undefined) renderStatus.credits = f.credits_remaining;
-  if (f.plan) renderStatus.plan = f.plan;
-  $("#status").innerHTML = `<span class="pill"><i class="tally ${cls}"></i>${text}</span>${renderStatus.plan ? `<span class="pill">${esc(renderStatus.plan)}</span>` : ""}${renderStatus.credits !== undefined ? `<span class="pill">${renderStatus.credits.toLocaleString()} credits</span>` : ""}`;
-  $("#hint").innerHTML = f.hint ? `<div class="hint">${esc(f.hint)}</div>` : "";
+function renderStatus(st, detailed = false) {
+  const active = st.jobs.some((j) => j.status === "running" || j.status === "queued");
+  busy = Boolean(st.switchInProgress);
+  if (accountUi) accountUi.onStatus(st, detailed);
   $("#pacing").innerHTML = st.pacing ? `<div class="pacing">⏱ ${esc(st.pacing)}</div>` : "";
   const jobs = [...st.jobs].reverse();
-  const sig = JSON.stringify(jobs.map((j) => [j.id, j.status, j.progress, j.files.length, j.credits, j.attempts, j.failed_scenes?.length ?? 0]));
+  const sig = JSON.stringify([
+    st.activeAccountId ?? null,
+    st.activeAccount?.label ?? null,
+    st.failoverPhase ?? null,
+    jobs.map((j) => [j.id, j.status, j.progress, j.files.length, j.credits, j.attempts, j.failed_scenes?.length ?? 0, j.accountId ?? null, j.accountLabel ?? null, j.portable ?? null, j.failoverFrom ?? null, j.failoverAttempts ?? null, j.errorCode ?? null, j.error ?? null, j.note ?? null]),
+  ]);
   if (sig !== renderStatus.sig) {
     if (renderStatus.sig && LIVE) loadGallery(slateFolder());
     renderStatus.sig = sig;
-    $("#jobs").innerHTML = jobs.map((j) => `<div class="job"><div class="top"><span class="name">${esc((j.project || "").split(/[\\/]/).pop())} · ${esc(j.scene)}</span>
-      <span class="badge ${j.status}">${j.status}${j.progress ? " " + esc(j.progress) : ""}</span>${j.credits !== undefined ? `<span class="badge">${j.credits} cr</span>` : ""}${j.attempts > 1 ? `<span class="badge">try ${j.attempts}</span>` : ""}
-      ${j.status === "queued" ? `<button class="btn small ghost" data-cancel="${j.id}">Cancel</button>` : ""}${/failed|cancelled/.test(j.status) ? `<button class="btn small" data-retry="${j.id}">Retry</button>` : ""}${j.status === "done" && j.failed_scenes?.length ? `<button class="btn small" data-retry="${j.id}">Retry ${j.failed_scenes.length} failed image${j.failed_scenes.length > 1 ? "s" : ""}</button>` : ""}</div>
-      ${j.status === "running" ? `<div class="meter"><i style="width:${parseInt(j.progress) || 4}%"></i></div>` : ""}
-      <p>${esc(j.prompt)}</p>${j.note ? `<p style="color:var(--warn)">${esc(j.note)}</p>` : ""}${j.error ? `<p class="err">${esc(j.error)}</p>` : ""}
-      ${j.files.map((p) => (/\.(mp4|webm|mov)$/i.test(p) ? `<video controls playsinline preload="metadata" src="${media(p)}"></video>` : /\.(m4a|mp3|wav)$/i.test(p) ? `<audio controls src="${media(p)}"></audio>` : `<img class="out" src="${media(p)}">`)).join("")}</div>`).join("") || `<p class="empty">Nothing queued yet.</p>`;
+    if (accountUi) $("#jobs").innerHTML = accountUi.renderJobs(st);
   }
   estimate();
   return active;
@@ -1181,11 +1475,23 @@ function renderStatus(st) {
 let timer, wasActive = false;
 async function poll(detailed = false) {
   clearTimeout(timer);
+  if (pollCtrl) pollCtrl.abort();
+  pollCtrl = new AbortController();
+  const seq = ++pollSeq;
   try {
-    const active = renderStatus(await api("status", { detailed }));
+    const st = await api("status", { detailed }, { signal: pollCtrl.signal });
+    if (seq !== pollSeq) return null;
+    const active = renderStatus(st, detailed);
     if (wasActive && !active) { wasActive = false; loadGallery(slateFolder()); return poll(true); }
-    wasActive = active; timer = setTimeout(poll, active ? 3000 : 20000);
-  } catch { $("#status").innerHTML = `<span class="pill"><i class="tally down"></i>Server offline</span>`; timer = setTimeout(poll, 5000); }
+    wasActive = active; timer = setTimeout(() => poll(false), active ? 3000 : 20000);
+    return st;
+  } catch (err) {
+    if (err && err.name === "AbortError") return null;
+    if (seq !== pollSeq) return null;
+    if (accountUi) accountUi.renderOffline(LIVE);
+    timer = setTimeout(() => poll(false), 5000);
+    return null;
+  }
 }
 
 /* ---------- boot ---------- */
@@ -1211,15 +1517,53 @@ $("#s_model").addEventListener("change", (e) => {
 for (const [id, path] of [["f_project", "frames"], ["s_project", "shots"], ["n_project", "narrate"], ["c_project", "cut"]])
   $("#" + id).addEventListener("input", (e) => { S[path].project = e.target.value; save(); });
 (async () => {
+  if (location.protocol.startsWith("http")) {
+    const { initAccountUi } = await import("/studio/account-ui.js");
+    accountUi = await initAccountUi({
+      api,
+      media,
+      toast,
+      guard,
+      isLive: () => LIVE,
+      getPlace: () => PLACE,
+      getStudioState: () => S,
+      getCastImage: () => castImage,
+      setCastImage: (val) => { castImage = val; },
+      saveStudioState: save,
+      renderAll,
+      clearLib: () => { LIB = []; chosen.clear(); renderLib(); },
+      clearAssetPickers: () => { $("#e_asset").innerHTML = ""; $("#k_asset").innerHTML = ""; $("#pickList").innerHTML = ""; if (picker.open) picker.close(); },
+      clearCast: () => { CAST = []; },
+      reloadCast: async (signal, epoch) => {
+        bootCastRequested = true;
+        try {
+          const chars = await loadCast(signal, epoch);
+          if (accountUi && epoch !== accountUi.getAccountEpoch()) return;
+          CAST = chars;
+          renderCast();
+        } catch (err) {
+          if (err && err.name === "AbortError") return;
+          renderCast();
+        }
+      },
+      setSwitchBusy: (flag) => { busy = flag; estimate(); },
+      triggerPoll: (detailed) => poll(detailed),
+    });
+  }
   if (!LIVE) {
     $("#offline").innerHTML = `<div class="hint" style="border-color:var(--bad)"><b>This is a static preview — nothing here is connected.</b><br>Start the real panel: double-click <b>Flow Studio.command</b> in the flow-mcp folder, then use <b>http://127.0.0.1:8787</b>.</div>`;
-    $("#status").innerHTML = `<span class="pill"><i class="tally down"></i>Not connected</span>`;
+    if (accountUi) accountUi.renderOffline(false);
+    else $("#status").innerHTML = `<span class="pill"><i class="tally down"></i>Not connected</span>`;
     renderAll(); showTab(S.tab); return;
   }
   try { [TECH, VOICES] = await Promise.all([api("techniques"), api("voices")]); } catch { VOICES = { kokoro: [], gemini: [] }; }
   applyPlace(VOICES.place);
-  loadCast().then((c) => { CAST = c; renderCast(); }).catch(() => {});
-  renderAll(); showTab(hashTab() ?? S.tab); poll(true); loadGallery();
+  renderAll(); showTab(hashTab() ?? S.tab); loadGallery();
+  const initialStatus = await poll(true);
+  if (initialStatus && initialStatus.flow && initialStatus.flow.signedIn && initialStatus.flow.inProject && !bootCastRequested) {
+    bootCastRequested = true;
+    loadCast().then((c) => { CAST = c; renderCast(); }).catch(() => {});
+  }
 })();
 </script>
 </body>

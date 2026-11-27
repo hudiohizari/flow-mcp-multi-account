@@ -4,7 +4,8 @@
   "description": "Local MCP server that drives Google Flow in a dedicated Chrome profile",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run build && node --test --experimental-test-coverage --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-lines=100 --test-coverage-include='dist/account-*.js' --test-coverage-include='dist/accounts.js' --test-coverage-include='dist/chrome-process.js' --test-coverage-include='dist/chrome.js' --test-coverage-include='dist/config.js' --test-coverage-include='dist/core-accounts.js' --test-coverage-include='dist/core-media.js' --test-coverage-include='dist/core.js' --test-coverage-include='dist/errors.js' --test-coverage-include='dist/flow-agent-plan.js' --test-coverage-include='dist/flow-credits.js' --test-coverage-include='dist/i18n.js' --test-coverage-include='dist/login-cli.js' --test-coverage-include='dist/mcp-*.js' --test-coverage-include='dist/media-schemas.js' --test-coverage-include='dist/platform.js' --test-coverage-include='dist/queue.js' --test-coverage-include='dist/remote.js' --test-coverage-include='dist/schemas.js' --test-coverage-include='dist/server.js' --test-coverage-include='dist/shared/*.js' --test-coverage-include='dist/studio/*.js' tests/*.test.ts",
+    "type-check": "tsc --noEmit",
     "build": "tsc",
     "start": "node dist/index.js",
     "login": "node dist/login.js",
